@@ -58,7 +58,6 @@ def analyze_generation(
     recent_tokens = torch.zeros(config.repetition_window, dtype=torch.long, device=model.device)
     all_generated_tokens = []
     
-    max_consecutive_fillers = 2
     consecutive_fillers = 0
     
     with torch.inference_mode():
@@ -112,10 +111,10 @@ def analyze_generation(
             
             # Update current phrase
             current_phrase += token_text
-            if any(token_text.endswith(end_token) for end_token in PHRASE_END_TOKENS):
+            if any(token_text.endswith(end_token) for end_token in config.phrase_end_tokens):
                 if len(current_phrase.strip()) > 0:
                     recent_phrases.append(current_phrase.strip())
-                    if len(recent_phrases) > 3:  # Keep last 3 phrases
+                    if len(recent_phrases) > config.max_recent_phrases:
                         recent_phrases.pop(0)
                 current_phrase = ""
             
@@ -132,9 +131,9 @@ def analyze_generation(
             
             # Check for filler patterns
             current_text = tokenizer.decode(current_ids[0])
-            if any(pattern in current_text[-20:].lower() for pattern in FILLER_PATTERNS):
+            if any(pattern in current_text[-config.phrase_context_window:].lower() for pattern in config.filler_patterns):
                 consecutive_fillers += 1
-                if consecutive_fillers > max_consecutive_fillers:
+                if consecutive_fillers > config.max_consecutive_fillers:
                     print(f"Stopping: Too many consecutive filler phrases")
                     break
             else:
