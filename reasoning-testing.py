@@ -35,6 +35,24 @@ import plotly.subplots as sp
 ## How can we use this information?
 # First, I want to look at the distribution of the latent activations in a 2x2 plot (sequence length, k)
 #%%
+# Set device
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Initialize SAE and tokenizer
+sae = Sae.load_from_hub(
+    "EleutherAI/sae-DeepSeek-R1-Distill-Qwen-1.5B-65k", 
+    hookpoint="layers.10.mlp",
+    device=device
+)
+tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
+
+# Load model and move to GPU if available
+model = AutoModelForCausalLM.from_pretrained(
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    device_map={"": device},
+    torch_dtype=torch.float32
+).to(device)
+#%%
 
 def analyze_generation(
     model,
@@ -221,29 +239,21 @@ def visualize_generation_activations(
     
     return figures
 
-#%%
-# Clear GPU memory if needed
-if 'model' in locals() or 'model' in globals():
-    del model
-if 'latent_acts' in locals() or 'latent_acts' in globals():
-    del latent_acts
-if 'outputs' in locals() or 'outputs' in globals():
-    del outputs
+#%% Initialize models (run this once)
+
+
+#%% Analysis cell (run this for each new prompt)
+# Clear previous outputs
+if 'gen_acts' in locals() or 'gen_acts' in globals():
+    del gen_acts
+if 'gen_texts' in locals() or 'gen_texts' in globals():
+    del gen_texts
+if 'tokens' in locals() or 'tokens' in globals():
+    del tokens
 torch.cuda.empty_cache()
-#%% Run the analysis
-in_text = "What is the value of x? x=2+1"
 
-
-
-# Initialize SAE and tokenizer
-sae = Sae.load_from_hub("EleutherAI/sae-DeepSeek-R1-Distill-Qwen-1.5B-65k", hookpoint="layers.10.mlp")
-tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
-
-# Load model and move to GPU if available
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = AutoModelForCausalLM.from_pretrained(
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-).to(device)
+# Set your prompt
+in_text = "Q: What is the value of x for the equation x = 2 + 1? A: x = 3 Q: What is the value of y for the equation y = 2 + 1? A: y = "
 
 # Get generation analysis
 gen_acts, gen_texts, tokens = analyze_generation(
@@ -251,7 +261,7 @@ gen_acts, gen_texts, tokens = analyze_generation(
     tokenizer=tokenizer,
     sae=sae,
     input_text=in_text,
-    max_new_tokens=50,  # Adjust based on expected response length
+    max_new_tokens=10,
     temperature=0.7,
     top_p=0.9,
 )
@@ -259,7 +269,7 @@ gen_acts, gen_texts, tokens = analyze_generation(
 # Print the final generated text
 print("\nFinal generated text:", gen_texts[-1])
 
-#%% Visualize results
+#%% Visualization cell (run this to see the results)
 # Visualize generation process
 gen_figs = visualize_generation_activations(gen_acts, gen_texts)
 for fig in gen_figs:
