@@ -1,6 +1,8 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Union
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from config import ExperimentResults
 
 def visualize_generation_activations(
     generation_acts: List,
@@ -176,6 +178,106 @@ def create_feature_evolution_plot(
             borderwidth=1
         ),
         hovermode='closest'
+    )
+    
+    return fig
+
+def visualize_experiment_results(results: Union[ExperimentResults, Dict]) -> go.Figure:
+    """
+    Create a comprehensive visualization of experiment results.
+    
+    Args:
+        results: Either an ExperimentResults instance or a dictionary containing:
+            - stopping_reasons: Counter of early stopping reasons
+            - token_frequencies: Counter of most common tokens
+            - avg_length: Average length of generations
+            - unique_ratio: Average ratio of unique tokens
+            - all_texts: List of all generated texts
+    
+    Returns:
+        Plotly figure with multiple subplots showing different aspects of the results
+    """
+    # Convert ExperimentResults to dict if needed
+    if isinstance(results, ExperimentResults):
+        results = results.to_dict()
+    
+    # Create subplot layout with appropriate types
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[
+            [{"type": "domain"}, {"type": "xy"}],
+            [{"type": "domain"}, {"type": "table"}]
+        ],
+        subplot_titles=(
+            'Early Stopping Reasons',
+            'Most Common Tokens',
+            'Generation Statistics',
+            'Sample Generations'
+        )
+    )
+    
+    # 1. Early stopping reasons pie chart
+    labels = list(results['stopping_reasons'].keys())
+    values = list(results['stopping_reasons'].values())
+    fig.add_trace(
+        go.Pie(labels=labels, values=values, textinfo='label+percent'),
+        row=1, col=1
+    )
+    
+    # 2. Most common tokens bar chart
+    tokens = list(results['token_frequencies'].keys())[:10]
+    counts = list(results['token_frequencies'].values())[:10]
+    fig.add_trace(
+        go.Bar(x=tokens, y=counts, name='Token Frequency'),
+        row=1, col=2
+    )
+    
+    # 3. Statistics indicators
+    fig.add_trace(
+        go.Indicator(
+            mode="number+delta",
+            value=results['avg_length'],
+            title="Avg Length",
+            domain={'row': 1, 'column': 0}
+        ),
+        row=2, col=1
+    )
+    
+    fig.add_trace(
+        go.Indicator(
+            mode="gauge+number",
+            value=results['unique_ratio'] * 100,
+            title="Unique Token Ratio %",
+            gauge={'axis': {'range': [0, 100]}},
+            domain={'row': 1, 'column': 0}
+        ),
+        row=2, col=1
+    )
+    
+    # 4. Sample generations table
+    sample_texts = results['all_texts'][:5]  # Show first 5 generations
+    fig.add_trace(
+        go.Table(
+            header=dict(values=['Sample Generations']),
+            cells=dict(values=[sample_texts])
+        ),
+        row=2, col=2
+    )
+    
+    # Update layout with metadata if available
+    title = "Generation Analysis Results"
+    if 'metadata' in results:
+        meta = results['metadata']
+        if 'model_name' in meta:
+            title += f" - {meta['model_name']}"
+        if 'num_runs' in meta:
+            title += f" ({meta['num_runs']} runs)"
+    
+    fig.update_layout(
+        height=1000,
+        width=1200,
+        showlegend=False,
+        title_text=title
     )
     
     return fig 

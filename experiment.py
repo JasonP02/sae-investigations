@@ -4,45 +4,44 @@ Core experiment functionality for running SAE analysis.
 
 import torch
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 
-from config import GenerationConfig
+from config import GenerationConfig, ModelState, ExperimentResults
 from generation import analyze_generation
 from visualization import visualize_generation_activations
 from setup import setup_model_and_sae
 
 def run_generation_experiment(
     prompt: str,
-    config: GenerationConfig = None,
-    device: str = None,
-    model: AutoModelForCausalLM = None,
-    tokenizer: AutoTokenizer = None,
-    sae: Sae = None,
+    model_state: Optional[ModelState] = None,
+    config: Optional[GenerationConfig] = None,
+    device: Optional[str] = None,
     visualize: bool = True
-) -> None:
+) -> Tuple[List, List[str], torch.Tensor]:
     """
     Run a complete generation experiment with visualization.
     
     Args:
         prompt: The input text to generate from
+        model_state: Pre-initialized ModelState (if None, will create new one)
         config: Generation configuration (uses default if None)
         device: Device to use (uses CUDA if available when None)
-        model: Pre-initialized model (if None, will create new one)
-        tokenizer: Pre-initialized tokenizer (if None, will create new one)
-        sae: Pre-initialized SAE (if None, will create new one)
         visualize: Whether to display visualization plots (default: True)
+    
+    Returns:
+        Tuple of (generation_acts, generated_texts, tokens)
     """
     # Setup if components not provided
-    if model is None or tokenizer is None or sae is None:
-        model, tokenizer, sae = setup_model_and_sae(device)
+    if model_state is None:
+        model_state = setup_model_and_sae(device)
     
     # Run generation
     gen_acts, gen_texts, tokens = analyze_generation(
-        model=model,
-        tokenizer=tokenizer,
-        sae=sae,
+        model=model_state.model,
+        tokenizer=model_state.tokenizer,
+        sae=model_state.sae,
         input_text=prompt,
         config=config
     )
@@ -55,39 +54,32 @@ def run_generation_experiment(
     if visualize:
         figures = visualize_generation_activations(gen_acts, gen_texts)
         for fig in figures:
-            fig.show() 
+            fig.show()
+            
+    return gen_acts, gen_texts, tokens
 
 def run_multiple_experiments(
     prompt: str,
     num_runs: int,
-    config: GenerationConfig = None,
-    device: str = None,
-    model: AutoModelForCausalLM = None,
-    tokenizer: AutoTokenizer = None,
-    sae: Sae = None,
-) -> Dict:
+    model_state: Optional[ModelState] = None,
+    config: Optional[GenerationConfig] = None,
+    device: Optional[str] = None,
+) -> ExperimentResults:
     """
     Run multiple generation experiments and collect statistics.
     
     Args:
         prompt: The input text to generate from
         num_runs: Number of times to run the experiment
+        model_state: Pre-initialized ModelState (if None, will create new one)
         config: Generation configuration (uses default if None)
         device: Device to use (uses CUDA if available when None)
-        model: Pre-initialized model (if None, will create new one)
-        tokenizer: Pre-initialized tokenizer (if None, will create new one)
-        sae: Pre-initialized SAE (if None, will create new one)
     
     Returns:
-        Dictionary containing:
-        - all_texts: List of all generated texts
-        - stopping_reasons: Counter of early stopping reasons
-        - token_frequencies: Counter of most common tokens
-        - avg_length: Average length of generations
-        - unique_ratio: Average ratio of unique tokens
+        ExperimentResults containing all experiment data and statistics
     """
-    if model is None or tokenizer is None or sae is None:
-        model, tokenizer, sae = setup_model_and_sae(device)
+    if model_state is None:
+        model_state = setup_model_and_sae(device)
     
     if config is None:
         config = GenerationConfig.default()
@@ -97,6 +89,7 @@ def run_multiple_experiments(
     all_tokens = []
     stopping_reasons = Counter()
     generation_lengths = []
+    all_generation_acts = []
     
     # Run experiments
     for i in range(num_runs):
@@ -110,9 +103,9 @@ def run_multiple_experiments(
         
         # Run generation
         gen_acts, gen_texts, tokens = analyze_generation(
-            model=model,
-            tokenizer=tokenizer,
-            sae=sae,
+            model=model_state.model,
+            tokenizer=model_state.tokenizer,
+            sae=model_state.sae,
             input_text=prompt,
             config=config
         )
@@ -131,8 +124,9 @@ def run_multiple_experiments(
         # Collect results
         final_text = gen_texts[-1][len(prompt):]  # Remove prompt
         all_texts.append(final_text)
-        all_tokens.extend(tokenizer.encode(final_text))
+        all_tokens.extend(model_state.tokenizer.encode(final_text))
         generation_lengths.append(len(final_text.split()))
+        all_generation_acts.append(gen_acts)
     
     # Calculate statistics
     token_frequencies = Counter(all_tokens)
@@ -145,14 +139,19 @@ def run_multiple_experiments(
     
     # Map token IDs to text for readability
     token_frequencies_text = Counter({
-        tokenizer.decode([token_id]): count 
+        model_state.tokenizer.decode([token_id]): count 
         for token_id, count in token_frequencies.most_common(20)
     })
     
-    return {
-        'all_texts': all_texts,
-        'stopping_reasons': stopping_reasons,
-        'token_frequencies': token_frequencies_text,
-        'avg_length': avg_length,
-        'unique_ratio': unique_ratio
-    } 
+    return ExperimentResults(
+        model_state=model_state,
+        config=config,
+        prompt=prompt,
+        all_texts=all_texts,
+        stopping_reasons=stopping_reasons,
+        token_frequencies=token_frequencies_text,
+        avg_length=avg_length,
+        unique_ratio=unique_ratio,
+        generation_acts=all_generation_acts,
+        metadata={'num_runs': num_runs}
+    ) 

@@ -6,8 +6,9 @@ This module provides functions for initializing models and components.
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae
+from config import ModelState
 
-def setup_model_and_sae(device: str = None) -> tuple:
+def setup_model_and_sae(device: str = None) -> ModelState:
     """
     Initialize the model, tokenizer, and SAE with appropriate settings.
     
@@ -15,22 +16,25 @@ def setup_model_and_sae(device: str = None) -> tuple:
         device: Device to use ('cuda' or 'cpu'). If None, will use CUDA if available.
     
     Returns:
-        tuple of (model, tokenizer, sae)
+        ModelState containing initialized components
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+    sae_name = "EleutherAI/sae-DeepSeek-R1-Distill-Qwen-1.5B-65k"
+    
     # Initialize SAE and tokenizer
     sae = Sae.load_from_hub(
-        "EleutherAI/sae-DeepSeek-R1-Distill-Qwen-1.5B-65k", 
+        sae_name,
         hookpoint="layers.10.mlp",
         device=device
     )
-    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     
     # Load model with optimizations
     model = AutoModelForCausalLM.from_pretrained(
-        "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        model_name,
         device_map={"": device},
         torch_dtype=torch.float16,  # Use half precision for 6GB VRAM
         low_cpu_mem_usage=True,
@@ -59,4 +63,11 @@ def setup_model_and_sae(device: str = None) -> tuple:
     # Move SAE to half precision for consistency
     sae = sae.to(torch.float16)
     
-    return model, tokenizer, sae 
+    return ModelState(
+        model=model,
+        tokenizer=tokenizer,
+        sae=sae,
+        device=device,
+        model_name=model_name,
+        sae_name=sae_name
+    ) 
