@@ -2,7 +2,7 @@ from typing import List, Tuple, Set
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
-from .config import GenerationConfig
+from config import GenerationConfig
 
 # Common filler patterns to detect
 FILLER_PATTERNS: List[str] = [

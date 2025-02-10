@@ -1,14 +1,7 @@
 #%%
-"""
-Interactive Analysis Script
-
-This script provides an interactive interface for analyzing SAE behavior
-during text generation using Jupyter-style cells in VS Code.
-"""
-
-from .config import GenerationConfig
-from .setup import setup_model_and_sae
-from .experiment import run_generation_experiment
+from config import GenerationConfig
+from setup import setup_model_and_sae
+from experiment import run_generation_experiment
 import torch
 
 #%% Model initialization cell (run once)
@@ -26,7 +19,9 @@ for var in ['gen_acts', 'gen_texts', 'tokens']:
         exec(f'del {var}')
 
 # Set your prompt
-prompt = "Answer the following question: Q: What will happen if a ball is thrown at a wall? A:"
+prompt = "Answer the following question: \
+Q: What will happen if a ball is thrown at a wall? \
+A:"
 
 # Use creative configuration for more diverse outputs
 config = GenerationConfig.precise()

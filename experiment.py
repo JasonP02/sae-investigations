@@ -6,10 +6,10 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 
-from .config import GenerationConfig
-from .generation import analyze_generation
-from .visualization import visualize_generation_activations
-from .setup import setup_model_and_sae
+from config import GenerationConfig
+from generation import analyze_generation
+from visualization import visualize_generation_activations
+from setup import setup_model_and_sae
 
 def run_generation_experiment(
     prompt: str,
