@@ -1,5 +1,62 @@
 from dataclasses import dataclass
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict
+
+@dataclass
+class ReasoningPatterns:
+    """Configuration for analyzing reasoning patterns in generations."""
+    # Tokens/phrases that indicate reasoning steps
+    reasoning_markers: Dict[str, float] = None  # marker -> importance weight
+    
+    def __post_init__(self):
+        if self.reasoning_markers is None:
+            self.reasoning_markers = {
+                # Step markers
+                "First,": 1.0,
+                "Second,": 1.0,
+                "Finally,": 1.0,
+                "Therefore,": 1.0,
+                
+                # Reasoning process markers
+                "Let's think": 1.2,
+                "To clarify": 1.2,
+                "Consider": 1.2,
+                "However,": 1.0,
+                
+                # Meta-reasoning markers
+                "Wait,": 1.5,
+                "Actually,": 1.5,
+                "On second thought": 1.5,
+                "I realize": 1.5,
+                
+                # Logical connectors
+                "because": 0.8,
+                "so": 0.8,
+                "thus": 0.8,
+                "which means": 0.8,
+                
+                # Uncertainty markers
+                "probably": 0.5,
+                "might": 0.5,
+                "could": 0.5,
+                "seems": 0.5
+            }
+
+@dataclass
+class PromptTemplate:
+    """Template for generating question prompts."""
+    prefix: str
+    suffix: str
+    examples: List[str] = None
+    
+    def __post_init__(self):
+        if self.examples is None:
+            self.examples = [
+                "What happens when you mix oil and water?",
+                "Why do birds migrate south for winter?",
+                "How does a bicycle stay upright while moving?",
+                "What causes thunder during a storm?",
+                "Why do leaves change color in autumn?"
+            ]
 
 @dataclass
 class GenerationConfig:
@@ -30,6 +87,10 @@ class GenerationConfig:
             eos_token_id (Optional[int]): ID of end-of-sequence token
             filler_patterns (List[str]): Common filler patterns to detect
             phrase_end_tokens (Set[str]): Tokens that indicate phrase boundaries
+        
+        Reasoning Analysis:
+            reasoning_patterns (ReasoningPatterns): Configuration for reasoning patterns
+            prompt_template (PromptTemplate): Template for generating question prompts
     """
     # Generation parameters
     max_new_tokens: int = 100
@@ -55,6 +116,10 @@ class GenerationConfig:
     filler_patterns: List[str] = None
     phrase_end_tokens: Set[str] = None
     
+    # Reasoning analysis
+    reasoning_patterns: ReasoningPatterns = None
+    prompt_template: PromptTemplate = None
+    
     def __post_init__(self):
         """Initialize default values for complex types after instance creation."""
         if self.filler_patterns is None:
@@ -65,6 +130,13 @@ class GenerationConfig:
             ]
         if self.phrase_end_tokens is None:
             self.phrase_end_tokens = {'.', '!', '?', ',', ';', ':'}
+        if self.reasoning_patterns is None:
+            self.reasoning_patterns = ReasoningPatterns()
+        if self.prompt_template is None:
+            self.prompt_template = PromptTemplate(
+                prefix="Let me help you understand this step by step.\nQuestion: ",
+                suffix="\nLet's think about this carefully:"
+            )
     
     @classmethod
     def default(cls) -> 'GenerationConfig':
@@ -93,4 +165,18 @@ class GenerationConfig:
             repetition_window=16,
             max_ngram_repeats=1,
             min_unique_ratio=0.5
+        )
+    
+    @classmethod
+    def reasoning_focused(cls) -> 'GenerationConfig':
+        """Creates a configuration optimized for step-by-step reasoning."""
+        return cls(
+            temperature=0.7,  # Balanced between creativity and consistency
+            top_p=0.9,
+            min_confidence=0.1,
+            max_new_tokens=200,  # Allow longer responses for reasoning
+            repetition_window=20,
+            max_ngram_repeats=2,
+            min_unique_ratio=0.3,  # Allow some repetition for reasoning markers
+            semantic_similarity_threshold=0.9  # Allow similar phrases in reasoning
         ) 

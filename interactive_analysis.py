@@ -1,5 +1,6 @@
 #%% Model initialization cell (run ONCE only)
 import torch
+from setup import setup_model_and_sae
 print("Initializing model, tokenizer, and SAE...")
 model, tokenizer, sae = setup_model_and_sae()
 print("Initialization complete!")
@@ -10,125 +11,59 @@ import experiment
 import config
 import setup
 import visualization
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import reasoning_analysis
 
 # Reload modules to get latest changes
 importlib.reload(experiment)
 importlib.reload(config)
 importlib.reload(setup)
 importlib.reload(visualization)
+importlib.reload(reasoning_analysis)
 
 # Re-import after reload
 from config import GenerationConfig
 from setup import setup_model_and_sae
 from experiment import run_generation_experiment, run_multiple_experiments
-from visualization import visualize_generation_activations
+from visualization import visualize_generation_activations, visualize_experiment_results, visualize_reasoning_analysis
+from reasoning_analysis import evaluate_prompt_effectiveness, suggest_prompt_improvements
 
 # Clear GPU memory
 torch.cuda.empty_cache()
 
 # Clean up previous variables if they exist
-for var in ['gen_acts', 'gen_texts', 'tokens', 'results', 'fig']:
+for var in ['gen_acts', 'gen_texts', 'tokens', 'results', 'fig', 'analysis_results']:
     if var in locals() or var in globals():
         exec(f'del {var}')
 
-# Set your prompt
-prompt = "Answer the following question: \
-Q: What will happen if a ball is thrown at a wall very fast? \
-A:"
+# Set your base question
+base_question = "What will happen if a ball is thrown at a wall very fast?"
 
-# Use precise configuration for consistent outputs
-config = GenerationConfig.precise()
+# Use reasoning-focused configuration
+config = GenerationConfig.reasoning_focused()
 
-# Run multiple experiments
-results = run_multiple_experiments(
-    prompt=prompt,
-    num_runs=10,  # Adjust based on how many runs you want
+# Evaluate different prompt variants
+analysis_results = evaluate_prompt_effectiveness(
+    base_question=base_question,
     config=config,
-    model=model,
-    tokenizer=tokenizer,
-    sae=sae,
+    num_variants=5,  # Test 5 different prompt variants
+    runs_per_variant=2  # Run each variant twice
 )
 
-# Create visualization subplots
-fig = make_subplots(
-    rows=2, cols=2,
-    subplot_titles=(
-        'Early Stopping Reasons',
-        'Most Common Tokens',
-        'Generation Statistics',
-        'Sample Generations'
-    )
-)
+# Print analysis results
+print("\nPrompt Effectiveness Analysis:")
+print("\nScores for each prompt variant:")
+for prompt, score in analysis_results['prompt_scores'].items():
+    print(f"\nPrompt: {prompt}")
+    print(f"Score: {score:.2f}")
 
-# 1. Early stopping reasons pie chart
-labels = list(results['stopping_reasons'].keys())
-values = list(results['stopping_reasons'].values())
-fig.add_trace(
-    go.Pie(labels=labels, values=values, textinfo='label+percent'),
-    row=1, col=1
-)
+print("\nBest performing prompt:")
+print(analysis_results['best_prompt'])
 
-# 2. Most common tokens bar chart
-tokens = list(results['token_frequencies'].keys())[:10]  # Top 10 tokens
-counts = list(results['token_frequencies'].values())[:10]
-fig.add_trace(
-    go.Bar(x=tokens, y=counts, name='Token Frequency'),
-    row=1, col=2
-)
+print("\nSuggested improvements:")
+for suggestion in suggest_prompt_improvements(analysis_results):
+    print(f"- {suggestion}")
 
-# 3. Statistics
-fig.add_trace(
-    go.Indicator(
-        mode="number+delta",
-        value=results['avg_length'],
-        title="Avg Length",
-        domain={'row': 1, 'column': 1}
-    ),
-    row=2, col=1
-)
-
-fig.add_trace(
-    go.Indicator(
-        mode="gauge+number",
-        value=results['unique_ratio'] * 100,
-        title="Unique Token Ratio %",
-        gauge={'axis': {'range': [0, 100]}},
-        domain={'row': 1, 'column': 1}
-    ),
-    row=2, col=1
-)
-
-# 4. Sample generations table
-sample_texts = results['all_texts'][:5]  # Show first 5 generations
-fig.add_trace(
-    go.Table(
-        header=dict(values=['Sample Generations']),
-        cells=dict(values=[sample_texts])
-    ),
-    row=2, col=2
-)
-
-# Update layout
-fig.update_layout(
-    height=1000,
-    width=1200,
-    showlegend=False,
-    title_text="Generation Analysis Results"
-)
-
+#%% Visualization cell (optional, run to see plots)
+# Create and display the reasoning analysis visualization
+fig = visualization.visualize_reasoning_analysis(analysis_results)
 fig.show()
-
-# Print detailed statistics
-print("\nDetailed Statistics:")
-print(f"Average generation length: {results['avg_length']:.2f} words")
-print(f"Unique token ratio: {results['unique_ratio']:.2%}")
-print("\nStopping reasons:")
-for reason, count in results['stopping_reasons'].most_common():
-    print(f"- {reason}: {count} times")
-print("\nMost common tokens:")
-for token, count in results['token_frequencies'].most_common(10):
-    print(f"- '{token}': {count} times")
-
-# %%

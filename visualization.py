@@ -1,6 +1,8 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from collections import Counter
 
 def visualize_generation_activations(
     generation_acts: List,
@@ -177,5 +179,189 @@ def create_feature_evolution_plot(
         ),
         hovermode='closest'
     )
+    
+    return fig
+
+def visualize_experiment_results(results: Dict) -> go.Figure:
+    """
+    Create a comprehensive visualization of multiple experiment results.
+    
+    Args:
+        results: Dictionary containing experiment results with:
+            - all_texts: List of all generated texts
+            - stopping_reasons: Counter of early stopping reasons
+            - token_frequencies: Counter of most common tokens
+            - avg_length: Average length of generations
+            - unique_ratio: Average ratio of unique tokens
+    
+    Returns:
+        Plotly figure with multiple subplots showing different aspects of the results
+    """
+    # Create subplot grid
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[
+            [{"type": "domain"}, {"type": "xy"}],  # First row: pie chart and bar chart
+            [{"type": "domain"}, {"type": "table"}]  # Second row: indicators and table
+        ],
+        subplot_titles=(
+            'Early Stopping Reasons',
+            'Most Common Tokens',
+            'Generation Statistics',
+            'Sample Generations'
+        )
+    )
+    
+    # 1. Early stopping reasons pie chart
+    labels = list(results['stopping_reasons'].keys())
+    values = list(results['stopping_reasons'].values())
+    fig.add_trace(
+        go.Pie(labels=labels, values=values, textinfo='label+percent'),
+        row=1, col=1
+    )
+    
+    # 2. Most common tokens bar chart
+    tokens = list(results['token_frequencies'].keys())[:10]  # Top 10 tokens
+    counts = list(results['token_frequencies'].values())[:10]
+    fig.add_trace(
+        go.Bar(x=tokens, y=counts, name='Token Frequency'),
+        row=1, col=2
+    )
+    
+    # 3. Statistics indicators
+    fig.add_trace(
+        go.Indicator(
+            mode="number",
+            value=results['avg_length'],
+            title="Avg Length (words)",
+            domain={'row': 1, 'column': 0}
+        ),
+        row=2, col=1
+    )
+    
+    fig.add_trace(
+        go.Indicator(
+            mode="gauge+number",
+            value=results['unique_ratio'] * 100,
+            title="Unique Token Ratio %",
+            gauge={'axis': {'range': [0, 100]}},
+            domain={'row': 1, 'column': 0}
+        ),
+        row=2, col=1
+    )
+    
+    # 4. Sample generations table
+    sample_texts = results['all_texts'][:5]  # Show first 5 generations
+    fig.add_trace(
+        go.Table(
+            header=dict(values=['Sample Generations']),
+            cells=dict(values=[sample_texts])
+        ),
+        row=2, col=2
+    )
+    
+    # Update layout
+    fig.update_layout(
+        height=1000,
+        width=1200,
+        showlegend=False,
+        title_text="Generation Analysis Results"
+    )
+    
+    # Update axes labels for bar chart
+    fig.update_xaxes(title_text="Token", row=1, col=2)
+    fig.update_yaxes(title_text="Frequency", row=1, col=2)
+    
+    return fig
+
+def visualize_reasoning_analysis(analysis_results: Dict) -> go.Figure:
+    """
+    Create visualization for reasoning pattern analysis results.
+    
+    Args:
+        analysis_results: Results from evaluate_prompt_effectiveness
+    
+    Returns:
+        Plotly figure with multiple subplots showing reasoning analysis
+    """
+    # Create subplot grid
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[
+            [{"type": "xy"}, {"type": "xy"}],
+            [{"type": "table", "colspan": 2}, None]
+        ],
+        subplot_titles=(
+            'Prompt Effectiveness Comparison',
+            'Reasoning Pattern Distribution',
+            'Best Performing Examples'
+        )
+    )
+    
+    # 1. Prompt effectiveness bar chart
+    prompts = list(analysis_results['prompt_scores'].keys())
+    scores = list(analysis_results['prompt_scores'].values())
+    
+    # Truncate long prompts for display
+    display_prompts = [p[:50] + '...' if len(p) > 50 else p for p in prompts]
+    
+    fig.add_trace(
+        go.Bar(
+            x=scores,
+            y=display_prompts,
+            orientation='h',
+            name='Reasoning Score'
+        ),
+        row=1, col=1
+    )
+    
+    # 2. Pattern distribution for best prompt
+    best_prompt = analysis_results['best_prompt']
+    pattern_analysis = analysis_results['pattern_analysis'][best_prompt]
+    
+    # Aggregate pattern counts across all generations
+    pattern_counts = Counter()
+    for text in pattern_analysis['generations']:
+        from reasoning_analysis import analyze_reasoning_patterns
+        analysis = analyze_reasoning_patterns(text, ReasoningPatterns())
+        pattern_counts.update(analysis['marker_counts'])
+    
+    patterns = list(pattern_counts.keys())
+    counts = list(pattern_counts.values())
+    
+    fig.add_trace(
+        go.Bar(
+            x=patterns,
+            y=counts,
+            name='Pattern Frequency'
+        ),
+        row=1, col=2
+    )
+    
+    # 3. Best examples table
+    best_examples = pattern_analysis['generations'][:3]  # Top 3 examples
+    scores = pattern_analysis['pattern_scores'][:3]
+    
+    fig.add_trace(
+        go.Table(
+            header=dict(values=['Example', 'Score']),
+            cells=dict(values=[best_examples, scores])
+        ),
+        row=2, col=1
+    )
+    
+    # Update layout
+    fig.update_layout(
+        height=1000,
+        width=1200,
+        showlegend=False,
+        title_text="Reasoning Pattern Analysis"
+    )
+    
+    # Update axes labels
+    fig.update_xaxes(title_text="Reasoning Score", row=1, col=1)
+    fig.update_xaxes(title_text="Pattern", row=1, col=2)
+    fig.update_yaxes(title_text="Prompt", row=1, col=1)
+    fig.update_yaxes(title_text="Frequency", row=1, col=2)
     
     return fig 
