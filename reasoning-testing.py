@@ -50,15 +50,33 @@ tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1-Distill-Qwen-
 model = AutoModelForCausalLM.from_pretrained(
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
     device_map={"": device},
-    torch_dtype=torch.float32
+    torch_dtype=torch.float16,  # Use half precision for 6GB VRAM
+    # Add memory and performance optimizations
+    low_cpu_mem_usage=True,
+    max_memory={0: "5GB"},  # Reserve some VRAM for other operations
+    use_flash_attention_2=False,  # RTX 2060 doesn't support it
 ).to(device)
 
 try:
     print("Attempting to compile model for speed...")
-    model = torch.compile(model)
+    # Use conservative compilation settings for RTX 2060
+    model = torch.compile(
+        model,
+        mode="reduce-overhead",
+        fullgraph=False,
+        options={
+            "max_autotune": False,
+            "max_parallel_gemm": 1,  # More conservative for 6GB VRAM
+            "triton.cudagraphs": False,  # Disable cudagraphs for older GPUs
+        }
+    )
     print("Model compiled successfully!")
 except Exception as e:
     print(f"Could not compile model (requires PyTorch 2.0+): {e}")
+    print("Continuing without compilation...")
+
+# Also move SAE to half precision for consistency
+sae = sae.to(torch.float16)
 #%%
 
 def analyze_generation(
@@ -280,7 +298,7 @@ def visualize_generation_activations(
     return figures
 
 #%% Analysis cell (run this for each new prompt)
-# Clear previous outputs
+# Clear previous outputs and ensure clean GPU memory
 if 'gen_acts' in locals() or 'gen_acts' in globals():
     del gen_acts
 if 'gen_texts' in locals() or 'gen_texts' in globals():
@@ -291,25 +309,29 @@ torch.cuda.empty_cache()
 
 # Set your prompt
 in_text = "Answer the following question: Q: What will happen if a ball is thrown at a wall? A:"
-max_new_tokens = 50  # Set higher max, let dynamic stopping handle it
 
-# Get generation analysis
+# Get generation analysis with memory-efficient settings
 gen_acts, gen_texts, tokens = analyze_generation(
     model=model,
     tokenizer=tokenizer,
     sae=sae,
     input_text=in_text,
-    max_new_tokens=max_new_tokens,
+    max_new_tokens=30,         # Reduced from 50 to use less memory
     temperature=0.7,
     top_p=0.9,
-    min_confidence=0.1,        # Stop if confidence drops below 5%
-    repetition_window=8,        # Look at last 8 tokens
-    max_repetition_ratio=0.5    # Stop if more than 50% tokens are repeated
+    min_confidence=0.1,
+    repetition_window=8,
+    max_repetition_ratio=0.5
 )
 
 # Print generation progress
 print("\nGeneration steps:", len(gen_texts))
 print("Final text:", gen_texts[-1])
+
+# Force garbage collection after generation
+import gc
+gc.collect()
+torch.cuda.empty_cache()
 
 #%% Visualization cell (run this to see the results)
 # Visualize generation process
