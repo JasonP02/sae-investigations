@@ -1,12 +1,10 @@
 """
-Main script for running SAE analysis experiments.
-This script provides a clean interface for running generation experiments
-with different configurations and visualizing the results.
+Core experiment functionality for running SAE analysis.
 """
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from sparsify import Sae
+from sparsify import Sae # type: ignore
 
 from .config import GenerationConfig
 from .generation import analyze_generation
@@ -52,14 +50,4 @@ def run_generation_experiment(
     # Visualize
     figures = visualize_generation_activations(gen_acts, gen_texts)
     for fig in figures:
-        fig.show()
-
-if __name__ == "__main__":
-    # Example usage
-    prompt = "Answer the following question: Q: What will happen if a ball is thrown at a wall? A:"
-    
-    # Use creative configuration
-    config = GenerationConfig.creative()
-    
-    # Run experiment
-    run_generation_experiment(prompt, config) 
+        fig.show() 

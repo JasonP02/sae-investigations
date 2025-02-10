@@ -1,7 +1,7 @@
 from typing import List, Tuple, Set
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from sparsify import Sae
+from sparsify import Sae # type: ignore
 from .config import GenerationConfig
 
 # Common filler patterns to detect
