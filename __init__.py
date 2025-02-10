@@ -12,7 +12,8 @@ from .visualization import (
     create_activation_heatmap,
     create_feature_evolution_plot
 )
-from .main import setup_model_and_sae, run_generation_experiment
+from .setup import setup_model_and_sae
+from .main import run_generation_experiment
 
 __version__ = "0.1.0"
 __all__ = [

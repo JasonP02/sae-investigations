@@ -1,15 +1,22 @@
 #%%
+"""
+Interactive Analysis Script
+
+This script provides an interactive interface for analyzing SAE behavior
+during text generation using Jupyter-style cells in VS Code.
+"""
+
 from sae_investigations import (
     GenerationConfig,
     setup_model_and_sae,
     run_generation_experiment
 )
-
 import torch
 
 #%% Model initialization cell (run once)
-# Set up model, tokenizer, and SAE
+print("Initializing model, tokenizer, and SAE...")
 model, tokenizer, sae = setup_model_and_sae()
+print("Initialization complete!")
 
 #%% Analysis cell (run this for each new prompt)
 # Clear GPU memory
@@ -18,10 +25,10 @@ torch.cuda.empty_cache()
 # Set your prompt
 prompt = "Answer the following question: Q: What will happen if a ball is thrown at a wall? A:"
 
-# Use creative configuration
+# Use creative configuration for more diverse outputs
 config = GenerationConfig.creative()
 
-# Run experiment
+print("Running generation with creative configuration...")
 run_generation_experiment(
     prompt=prompt,
     config=config,
@@ -30,8 +37,13 @@ run_generation_experiment(
     sae=sae
 )
 
-#%% Try another prompt
+#%% Try another prompt with precise configuration
 prompt = "Write a short story about a magical forest: "
+
+# Use precise configuration for more focused outputs
+config = GenerationConfig.precise()
+
+print("Running generation with precise configuration...")
 run_generation_experiment(
     prompt=prompt,
     config=config,
