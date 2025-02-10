@@ -1,0 +1,12 @@
+# Core dependencies
+torch>=2.0.0  # For PyTorch functionality and model compilation
+transformers>=4.36.0  # For DeepSeek model and tokenizer
+sparsify>=0.1.0  # For SAE functionality
+
+# Visualization
+plotly>=5.18.0  # For interactive visualizations
+numpy>=1.24.0  # Required for numerical operations
+
+# Optional dependencies
+jupyter  # For running notebooks (optional)
+ipywidgets  # For interactive widgets in notebooks (optional) 
