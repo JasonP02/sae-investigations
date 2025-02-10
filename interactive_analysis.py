@@ -23,17 +23,12 @@ importlib.reload(visualization)
 # Re-import after reload
 from config import GenerationConfig
 from setup import setup_model_and_sae
-from experiment import run_multiple_experiments
+from experiment import run_generation_experiment, run_multiple_experiments
 from visualization import visualize_generation_activations, visualize_experiment_results
 from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter/IPython environments
 
-# Memory management
-import gc
-import torch
-
-# Clear CUDA cache and run garbage collection
+# Clear GPU memory
 torch.cuda.empty_cache()
-gc.collect()
 
 # Clean up previous variables if they exist
 for var in ['gen_acts', 'gen_texts', 'tokens', 'results', 'fig']:
@@ -60,29 +55,39 @@ with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
         progress_callback=lambda: pbar.update(1)
     )
 
-'''
-results structure (ExperimentResults object):
-    Attributes:
-        model_state: The model state used for the experiment
-        config: The generation configuration used
-        prompt: The input prompt used
-        all_texts: List of all generated texts
-        stopping_reasons: Counter of early stopping reasons
-        token_frequencies: Counter of most common tokens
-        avg_length: Average length of generations
-        unique_ratio: Average ratio of unique tokens
-        generation_acts: Optional list of activation patterns
-        metadata: Additional experiment metadata
-    """
-'''
-
 #%% Visualize activations for first generation
+print("\nVisualizing activations for first generation...")
+# Get the first generation's activations and text
+first_gen_acts = results.generation_acts[0]  # Get first run's activations
+first_gen_texts = []
+
+# Create list of texts at each step by tracking the incremental changes
+current_text = prompt
+for i in range(len(first_gen_acts)):
+    if i == 0:
+        first_gen_texts.append(current_text)  # Start with prompt
+    else:
+        # Get the new text generated at this step
+        new_text = results.all_texts[0]
+        # Only add text if it's different from the last one
+        if len(first_gen_texts) == 0 or new_text != first_gen_texts[-1]:
+            first_gen_texts.append(new_text)
+
+# Create activation visualizer with both original and encoded activations
+activation_data = {
+    'generation_acts': first_gen_acts,
+    'generated_texts': first_gen_texts,
+    'metadata': {
+        **results.metadata,
+        'model_name': results.model_state.model_name,
+        'sae_name': results.model_state.sae_name
+    }
+}
+
+# Create and display activation visualizations
 print("\nDisplaying activation visualizations (original MLP vs SAE-encoded)...")
-activation_figures = visualize_generation_activations(
-    results.generation_acts[0],  # First run's activations
-    results.all_texts[0],  # First run's texts
-    title_prefix=f"{model_state.model_name} - {model_state.sae_name}"
-)
+activation_viz = visualization.GenerationActivationVisualizer(activation_data)
+activation_figures = activation_viz.create_figures()
 
 for fig in activation_figures:
     try:
@@ -98,7 +103,7 @@ for fig in activation_figures:
             print("- Shows which features are most active and when they activate")
             print("- Hover over points to see the token generated at each step")
     except Exception as e:
-        print(f"Error displaying figure: {e}")
+        print(f"Error displaying activation figure: {e}")
 
 #%% Visualize experiment results
 
