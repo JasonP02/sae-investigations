@@ -17,7 +17,8 @@ def run_generation_experiment(
     device: str = None,
     model: AutoModelForCausalLM = None,
     tokenizer: AutoTokenizer = None,
-    sae: Sae = None
+    sae: Sae = None,
+    visualize: bool = True
 ) -> None:
     """
     Run a complete generation experiment with visualization.
@@ -45,9 +46,10 @@ def run_generation_experiment(
     
     # Print results
     print("\nGeneration steps:", len(gen_texts))
-    print("Final text:", gen_texts[-1])
+    print(gen_texts[-1:config.max_new_tokens])
     
     # Visualize
-    figures = visualize_generation_activations(gen_acts, gen_texts)
-    for fig in figures:
-        fig.show() 
+    if visualize:
+        figures = visualize_generation_activations(gen_acts, gen_texts)
+        for fig in figures:
+            fig.show() 

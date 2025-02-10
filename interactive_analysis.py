@@ -32,7 +32,8 @@ run_generation_experiment(
     config=config,
     model=model,
     tokenizer=tokenizer,
-    sae=sae
+    sae=sae,
+    visualize=False
 )
 
 #%% Try another prompt with precise configuration
