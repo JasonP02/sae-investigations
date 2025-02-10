@@ -36,11 +36,11 @@ class GenerationConfig:
             phrase_end_tokens (Set[str]): Tokens that indicate phrase boundaries
     """
     # Generation parameters
-    num_runs: int = 50
+    num_runs: int = 200
     max_new_tokens: int = 100
     temperature: float = 0.1
     top_p: float = 0.92
-    do_sample: bool = True
+    do_sample: bool = False
     min_confidence: float = 0.05
     
     # Repetition control

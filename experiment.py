@@ -7,57 +7,13 @@ from collections import Counter
 from typing import Dict, List, Tuple, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
+import gc
 
 from config import GenerationConfig
 from models import ModelState, ExperimentResults
 from generation import analyze_generation
 from visualization import visualize_generation_activations
 from setup import setup_model_and_sae
-
-def run_generation_experiment(
-    prompt: str,
-    model_state: Optional[ModelState] = None,
-    config: Optional[GenerationConfig] = None,
-    device: Optional[str] = None,
-    visualize: bool = True
-) -> Tuple[List, List[str], torch.Tensor]:
-    """
-    Run a complete generation experiment with visualization.
-    
-    Args:
-        prompt: The input text to generate from
-        model_state: Pre-initialized ModelState (if None, will create new one)
-        config: Generation configuration (uses default if None)
-        device: Device to use (uses CUDA if available when None)
-        visualize: Whether to display visualization plots (default: True)
-    
-    Returns:
-        Tuple of (generation_acts, generated_texts, tokens)
-    """
-    # Setup if components not provided
-    if model_state is None:
-        model_state = setup_model_and_sae(device)
-    
-    # Run generation
-    gen_acts, gen_texts, tokens = analyze_generation(
-        model=model_state.model,
-        tokenizer=model_state.tokenizer,
-        sae=model_state.sae,
-        input_text=prompt,
-        config=config
-    )
-    
-    # Print results
-    print("\nGeneration steps:", len(gen_texts))
-    print(gen_texts[-1])
-    
-    # Visualize
-    if visualize:
-        figures = visualize_generation_activations(gen_acts, gen_texts)
-        for fig in figures:
-            fig.show()
-            
-    return gen_acts, gen_texts, tokens
 
 def run_multiple_experiments(
     prompt: str,
@@ -94,42 +50,41 @@ def run_multiple_experiments(
     generation_lengths = []
     all_generation_acts = []
     
-    # Run experiments
     for i in range(num_runs):
-        # Capture output to parse stopping reason
-        import io
-        import sys
-        output_capture = io.StringIO()
-        sys.stdout = output_capture
+        try:
+            with torch.no_grad():  # Add no_grad context
+                # Run generation
+                gen_acts, gen_texts, tokens, stopping_reason = analyze_generation(
+                    model=model_state.model,
+                    tokenizer=model_state.tokenizer,
+                    sae=model_state.sae,
+                    input_text=prompt,
+                    config=config
+                )
+                
+                # Add the stopping reason to the Counter
+                if stopping_reason:
+                    stopping_reasons[stopping_reason] += 1
+                
+                # Process results immediately and clear original data
+                final_text = gen_texts[-1][len(prompt):]
+                all_texts.append(final_text)
+                all_tokens.extend(model_state.tokenizer.encode(final_text))
+                generation_lengths.append(len(final_text.split()))
+                
+                # Store generation acts
+                all_generation_acts.append(gen_acts)
+                
+                # Cleanup - remove reference to non-existent processed_acts
+                del gen_acts, gen_texts, tokens
+                torch.cuda.empty_cache()
+                gc.collect()
+        except Exception as e:
+            print(f"Error in run {i}: {str(e)}")
+            torch.cuda.empty_cache()
+            gc.collect()
+            continue
         
-        # Run generation
-        gen_acts, gen_texts, tokens = analyze_generation(
-            model=model_state.model,
-            tokenizer=model_state.tokenizer,
-            sae=model_state.sae,
-            input_text=prompt,
-            config=config
-        )
-        
-        # Restore stdout and get captured output
-        sys.stdout = sys.__stdout__
-        output = output_capture.getvalue()
-        
-        # Parse stopping reason
-        for line in output.split('\n'):
-            if line.startswith('Stopping:'):
-                reason = line.split(':', 1)[1].strip()
-                stopping_reasons[reason] += 1
-                break
-        
-        # Collect results
-        final_text = gen_texts[-1][len(prompt):]  # Remove prompt
-        all_texts.append(final_text)
-        all_tokens.extend(model_state.tokenizer.encode(final_text))
-        generation_lengths.append(len(final_text.split()))
-        all_generation_acts.append(gen_acts)
-        
-        # Update progress if callback provided
         if progress_callback:
             progress_callback()
     

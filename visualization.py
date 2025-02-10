@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict, Union
 import numpy as np
+import torch
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from models import ExperimentResults
@@ -31,198 +32,97 @@ class BaseVisualizer:
             raise ValueError(f"Expected plotly Figure object, got {type(fig)}")
         return fig
 
-class GenerationActivationVisualizer(BaseVisualizer):
-    """Visualizer for generation activations."""
-    def create_figures(self) -> List[go.Figure]:
-        """Create activation visualization figures."""
-        figures = []
-        
-        if 'generation_acts' not in self.results or 'generated_texts' not in self.results:
-            return figures
-        
-        # Extract data
-        generation_acts = self.results['generation_acts']
-        generated_texts = self.results['generated_texts']
-        layer_idx = self.results.get('layer_idx', 0)
-        step_interval = self.results.get('step_interval', 1)
-        
-        # 1. Feature activation heatmap
-        fig_heatmap = self._create_activation_heatmap(
-            generation_acts, generated_texts, layer_idx, step_interval
-        )
-        figures.append(self._validate_figure(fig_heatmap))
-        
-        # 2. Feature usage evolution
-        fig_evolution = self._create_feature_evolution_plot(
-            generation_acts, generated_texts, layer_idx, step_interval
-        )
-        figures.append(self._validate_figure(fig_evolution))
-        
-        return figures
+def create_activation_heatmaps(
+    prepared_acts: List[Dict],
+    generated_texts: List[str],
+    title: str = "Feature Activations During Generation (MLP Layer 10)"
+) -> go.Figure:
+    """Creates heatmaps using pre-converted numpy arrays."""
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=('Original MLP Activations', 'SAE-Encoded Activations'),
+        vertical_spacing=0.15
+    )
     
-    def _create_activation_heatmap(
-        self,
-        generation_acts: List,
-        generated_texts: List[str],
-        layer_idx: int,
-        step_interval: int
-    ) -> go.Figure:
-        """Creates a heatmap of feature activations over generation steps."""
-        # Create subplots for original and encoded activations
-        fig = make_subplots(
-            rows=2, cols=1,
-            subplot_titles=('Original MLP Activations', 'SAE-Encoded Activations'),
-            vertical_spacing=0.15
-        )
-        
-        # Get activations for specified layer across all steps
-        step_acts_original = []
-        step_acts_encoded = []
-        step_indices = []
-        step_labels = []
-        
-        for step, (acts, text) in enumerate(zip(generation_acts, generated_texts)):
-            if step % step_interval == 0:
-                layer_acts = acts[0]
-                # Get original activations
-                step_acts_original.append(layer_acts['original'].cpu().numpy()[0, -1])
-                # Get encoded activations and indices
-                encoded_acts = layer_acts['encoded']
-                step_acts_encoded.append(encoded_acts.top_acts.detach().cpu().numpy()[0, -1])
-                step_indices.append(encoded_acts.top_indices.detach().cpu().numpy()[0, -1])
-                step_labels.append(f"Step {step}: {text[-20:]}")
-        
-        # Convert to numpy arrays
-        step_acts_original = np.array(step_acts_original)
-        step_acts_encoded = np.array(step_acts_encoded)
-        step_indices = np.array(step_indices)
-        
-        # Create heatmap for original activations
-        fig.add_trace(
-            go.Heatmap(
-                z=step_acts_original,
-                y=step_labels,
-                colorscale='RdBu',
-                name='Original Values',
-                showscale=True,
-                colorbar=dict(title="Activation Value", y=0.85, len=0.35)
-            ),
-            row=1, col=1
-        )
-        
-        # Create heatmap for encoded activations
-        fig.add_trace(
-            go.Heatmap(
-                z=step_acts_encoded,
-                y=step_labels,
-                colorscale='RdBu',
-                name='Encoded Values',
-                showscale=True,
-                colorbar=dict(title="Activation Value", y=0.35, len=0.35)
-            ),
-            row=2, col=1
-        )
-        
-        fig.update_layout(
-            title_text=f"{self.base_title}<br>Feature Activations During Generation (MLP Layer 10)",
-            height=1200,  # Made taller to accommodate both plots
-            width=1200
-        )
-        
-        # Update axis labels
-        fig.update_xaxes(title_text="Hidden Dimension", row=1, col=1)
-        fig.update_xaxes(title_text="K-index", row=2, col=1)
-        fig.update_yaxes(title_text="Generation Step", row=1, col=1)
-        fig.update_yaxes(title_text="Generation Step", row=2, col=1)
-        
-        return fig
+    step_labels = [f"Step {i}: {generated_texts[i][-20:]}" for i in range(len(prepared_acts))]
     
-    def _create_feature_evolution_plot(
-        self,
-        generation_acts: List,
-        generated_texts: List[str],
-        layer_idx: int,
-        step_interval: int
-    ) -> go.Figure:
-        """Creates a line plot showing the evolution of top feature activations."""
-        fig = go.Figure()
+    # Original activations heatmap
+    original_acts = np.stack([acts['original'][0, -1] for acts in prepared_acts])
+    fig.add_trace(
+        go.Heatmap(z=original_acts, y=step_labels, colorscale='RdBu'),
+        row=1, col=1
+    )
+    
+    # SAE-encoded activations heatmap
+    encoded_acts = np.stack([acts['encoded']['top_acts'][0, -1] for acts in prepared_acts])
+    fig.add_trace(
+        go.Heatmap(z=encoded_acts, y=step_labels, colorscale='RdBu'),
+        row=2, col=1
+    )
+    
+    return fig
+
+def create_feature_evolution_plot(
+    prepared_acts: List[Dict],
+    generated_texts: List[str],
+    n_features: int = 10,
+    title: str = "Top Feature Evolution During Generation"
+) -> go.Figure:
+    """Creates evolution plot using pre-converted numpy arrays."""
+    fig = go.Figure()
+    n_features = int(n_features)
+    
+    # Get top N most active features
+    encoded_indices = np.concatenate([acts['encoded']['top_indices'][0, -1] for acts in prepared_acts])
+    feature_counts = np.bincount(encoded_indices.flatten())
+    top_features = np.argsort(feature_counts)[-n_features:]
+    
+    for feature_idx in top_features:
+        activations = []
+        hover_texts = []
         
-        # Get activations and indices
-        step_acts = []
-        step_indices = []
-        
-        for step, (acts, text) in enumerate(zip(generation_acts, generated_texts)):
-            if step % step_interval == 0:
-                layer_acts = acts[0]
-                encoded_acts = layer_acts['encoded']
-                step_acts.append(encoded_acts.top_acts.detach().cpu().numpy()[0, -1])
-                step_indices.append(encoded_acts.top_indices.detach().cpu().numpy()[0, -1])
-        
-        step_acts = np.array(step_acts)
-        step_indices = np.array(step_indices)
-        
-        # Track top N most used features
-        N = 10
-        feature_counts = np.zeros(65536)
-        for step_idx in step_indices:
-            unique, counts = np.unique(step_idx, return_counts=True)
-            feature_counts[unique] += counts
-        
-        top_features = np.argsort(feature_counts)[-N:]
-        
-        # Get the generated tokens for hover text
-        all_tokens = []
-        for text_idx in range(len(generated_texts)-1):
-            if text_idx + 1 < len(generated_texts):
-                new_token = generated_texts[text_idx + 1][len(generated_texts[text_idx]):]
-                all_tokens.append(new_token if new_token else "")
-        
-        # Plot activation strength of top features
-        for feature_idx in top_features:
-            feature_activations = []
-            hover_texts = []
+        for step, (acts, text) in enumerate(zip(prepared_acts, generated_texts)):
+            indices = acts['encoded']['top_indices'][0, -1]
+            values = acts['encoded']['top_acts'][0, -1]
             
-            for step, (step_act, step_idx) in enumerate(zip(step_acts, step_indices)):
-                feature_pos = np.where(step_idx == feature_idx)[0]
-                activation = step_act[feature_pos[0]] if len(feature_pos) > 0 else 0
-                feature_activations.append(activation)
-                
-                token_text = all_tokens[step-1] if step > 0 and step <= len(all_tokens) else ""
-                hover_text = f"Step {step}<br>Feature: {feature_idx}<br>Activation: {activation:.3f}"
-                if token_text:
-                    hover_text += f"<br>Token: '{token_text}'"
-                hover_texts.append(hover_text)
+            mask = indices == feature_idx
+            activation = float(values[mask][0]) if mask.any() else 0.0
+            activations.append(activation)
             
-            fig.add_trace(
-                go.Scatter(
-                    y=feature_activations,
-                    name=f"Feature {feature_idx}",
-                    mode='lines+markers',
-                    hovertext=hover_texts,
-                    hoverinfo='text'
-                )
-            )
-        
-        fig.update_layout(
-            title_text=f"{self.base_title}<br>Top {N} Feature Evolution During Generation (MLP Layer 10)",
-            xaxis_title="Generation Step",
-            yaxis_title="Activation Strength",
-            height=600,
-            width=1000,
-            showlegend=True,
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="right",
-                x=0.99,
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="rgba(0, 0, 0, 0.3)",
-                borderwidth=1
-            ),
-            hovermode='closest'
-        )
-        
-        return fig
+            token_text = text[-1] if step > 0 else ""
+            hover_text = f"Step {step}<br>Feature: {feature_idx}<br>Activation: {activation:.3f}"
+            if token_text:
+                hover_text += f"<br>Token: '{token_text}'"
+            hover_texts.append(hover_text)
+            
+        fig.add_trace(go.Scatter(
+            y=activations,
+            name=f"Feature {feature_idx}",
+            mode='lines+markers',
+            hovertext=hover_texts,
+            hoverinfo='text'
+        ))
+    
+    fig.update_layout(
+        title_text=title,
+        xaxis_title="Generation Step",
+        yaxis_title="Activation Strength",
+        height=600,
+        width=1000,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="right",
+            x=0.99,
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="rgba(0, 0, 0, 0.3)",
+            borderwidth=1
+        ),
+        hovermode='closest'
+    )
+    
+    return fig
 
 class ExperimentResultsVisualizer(BaseVisualizer):
     """Visualizer for experiment results."""
@@ -341,23 +241,54 @@ class ExperimentResultsVisualizer(BaseVisualizer):
         )
         return fig
 
-# Simple wrapper functions for backward compatibility
-def visualize_generation_activations(
-    generation_acts: List,
-    generated_texts: List[str],
-    layer_idx: int = 0,
-    step_interval: int = 1
-) -> List[go.Figure]:
-    results = {
-        'generation_acts': generation_acts,
-        'generated_texts': generated_texts,
-        'layer_idx': layer_idx,
-        'step_interval': step_interval
-    }
-    return GenerationActivationVisualizer(results).create_figures()
+def prepare_for_visualization(generation_acts: List) -> List[Dict]:
+    """Convert GPU tensors to numpy arrays for visualization."""
+    prepared_acts = []
+    for acts in generation_acts:
+        prepared = {
+            'original': acts[0]['original'].cpu().numpy(),
+            'encoded': {
+                'top_acts': acts[0]['encoded'].top_acts.cpu().numpy(),
+                'top_indices': acts[0]['encoded'].top_indices.cpu().numpy()
+            }
+        }
+        prepared_acts.append(prepared)
+    return prepared_acts
+
+def visualize_generation_activations(generation_acts, generated_texts, title_prefix=""):
+    """Single entry point for visualization with clear data conversion."""
+    title_prefix = f"{title_prefix} - " if title_prefix else ""
+    prepared_acts = prepare_for_visualization(generation_acts)
+    
+    return [
+        create_activation_heatmaps(
+            prepared_acts, 
+            generated_texts,
+            title=f"{title_prefix}Feature Activations During Generation (MLP Layer 10)"
+        ),
+        create_feature_evolution_plot(
+            prepared_acts=prepared_acts,
+            generated_texts=generated_texts,
+            n_features=10,
+            title=f"{title_prefix}Top Feature Evolution During Generation (MLP Layer 10)"
+        )
+    ]
 
 def visualize_experiment_results(
     results: Union[ExperimentResults, Dict],
     num_runs: int = 5
 ) -> List[go.Figure]:
     return ExperimentResultsVisualizer(results, num_runs).create_figures()
+
+def collect_activations(outputs, sae) -> List[Dict[str, torch.Tensor]]:
+    """Keep data on GPU until computation is complete."""
+    step_acts = []
+    # Stay on GPU for potential further computations
+    hidden_state = outputs.hidden_states[10].detach()
+    encoded = sae.encode(hidden_state)
+    
+    step_acts.append({
+        'original': hidden_state,
+        'encoded': encoded
+    })
+    return step_acts
