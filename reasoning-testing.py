@@ -52,6 +52,13 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map={"": device},
     torch_dtype=torch.float32
 ).to(device)
+
+try:
+    print("Attempting to compile model for speed...")
+    model = torch.compile(model)
+    print("Model compiled successfully!")
+except Exception as e:
+    print(f"Could not compile model (requires PyTorch 2.0+): {e}")
 #%%
 
 def analyze_generation(
@@ -65,9 +72,12 @@ def analyze_generation(
     do_sample: bool = True,
     pad_token_id: int = None,
     eos_token_id: int = None,
+    min_confidence: float = 0.1,
+    repetition_window: int = 8,
+    max_repetition_ratio: float = 0.5
 ):
     """
-    Analyze the SAE activations during the generation process.
+    Optimized version of generation analysis.
     """
     inputs = tokenizer(input_text, return_tensors="pt")
     input_length = inputs.input_ids.shape[1]
@@ -76,57 +86,87 @@ def analyze_generation(
     generation_acts = []
     generated_texts = []
     
+    # Move repetition tracking to GPU
+    recent_tokens = torch.zeros(repetition_window, dtype=torch.long, device=model.device)
+    token_idx = 0
+    
     with torch.inference_mode():
-        # Move to same device as model
+        # Move to device
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
-        
-        # Initial forward pass to get hidden states for input
-        outputs = model(**inputs, output_hidden_states=True)
         current_ids = inputs["input_ids"]
         
+        # Initial forward pass
+        outputs = model(current_ids, output_hidden_states=True)
+        
+        # Pre-allocate tensors for efficiency
+        next_token = torch.zeros(1, 1, dtype=torch.long, device=model.device)
+        
         # Generate tokens one at a time
-        for _ in range(max_new_tokens):
+        for step in range(max_new_tokens):
             # Get next token probabilities
-            next_token_logits = outputs.logits[:, -1, :]
+            next_token_logits = outputs.logits[:, -1:, :]  # Keep batch dimension
             
             if do_sample:
-                # Temperature scaling
+                # Temperature and top-p sampling (all on GPU)
                 next_token_logits = next_token_logits / temperature
-                # Top-p sampling
                 probs = torch.nn.functional.softmax(next_token_logits, dim=-1)
-                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+                
+                # Check confidence (still on GPU)
+                top_prob = probs.max().item()
+                if top_prob < min_confidence:
+                    print(f"Stopping: Low confidence ({top_prob:.3f})")
+                    break
+                
+                # Nucleus sampling
+                sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
                 cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
                 mask = cumsum_probs > top_p
                 mask[..., 1:] = mask[..., :-1].clone()
                 mask[..., 0] = 0
                 sorted_probs[mask] = 0.0
                 sorted_probs = sorted_probs / sorted_probs.sum(dim=-1, keepdim=True)
-                next_token = sorted_indices[0, torch.multinomial(sorted_probs[0], 1)]
+                
+                # Sample
+                sample_idx = torch.multinomial(sorted_probs[0, 0], 1)
+                next_token[0, 0] = sorted_indices[0, 0, sample_idx]
             else:
-                # Greedy decoding
-                next_token = next_token_logits.argmax(dim=-1)
+                next_token[0, 0] = next_token_logits[0, 0].argmax()
             
-            # Add new token to sequence
-            current_ids = torch.cat([current_ids, next_token.unsqueeze(0)], dim=-1)
+            # Check for repetition (on GPU)
+            recent_tokens[token_idx % repetition_window] = next_token[0, 0]
+            if step >= repetition_window:
+                unique_tokens = torch.unique(recent_tokens)
+                repetition_ratio = 1 - (len(unique_tokens) / repetition_window)
+                if repetition_ratio > max_repetition_ratio:
+                    print(f"Stopping: High repetition ({repetition_ratio:.2f})")
+                    break
+            token_idx += 1
             
-            # Forward pass with new sequence
+            # Concatenate and forward pass
+            current_ids = torch.cat([current_ids, next_token], dim=1)
             outputs = model(current_ids, output_hidden_states=True)
             
-            # Collect activations for this step
+            # Collect only the last layer's activations (or specific layers you need)
             step_acts = []
-            for hidden_state in outputs.hidden_states:
+            # Only encode layers we actually need for visualization
+            for hidden_state in [outputs.hidden_states[10]]:  # Assuming layer 10 is what we want
                 step_acts.append(sae.encode(hidden_state))
             generation_acts.append(step_acts)
             
-            # Store generated text
-            generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
-            
-            # Optional: print progress
-            print(f"Step {len(generation_acts)}/{max_new_tokens}: {generated_texts[-1]}")
+            # Store generated text (do this less frequently)
+            if step % 5 == 0 or step == max_new_tokens - 1:
+                generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
+                if step % 5 == 0:  # Print progress less frequently
+                    print(f"Step {step}: Confidence = {top_prob:.3f}")
             
             # Check for EOS token
-            if next_token.item() == (eos_token_id or tokenizer.eos_token_id):
+            if next_token[0, 0].item() == (eos_token_id or tokenizer.eos_token_id):
+                print("Stopping: EOS token generated")
                 break
+    
+    # Fill in missing texts at the end
+    while len(generated_texts) < len(generation_acts):
+        generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
     
     return generation_acts, generated_texts, current_ids[0]
 
@@ -239,9 +279,6 @@ def visualize_generation_activations(
     
     return figures
 
-#%% Initialize models (run this once)
-
-
 #%% Analysis cell (run this for each new prompt)
 # Clear previous outputs
 if 'gen_acts' in locals() or 'gen_acts' in globals():
@@ -253,7 +290,8 @@ if 'tokens' in locals() or 'tokens' in globals():
 torch.cuda.empty_cache()
 
 # Set your prompt
-in_text = "Q: What is the value of x for the equation x = 2 + 1? A: x = 3 Q: What is the value of y for the equation y = 2 + 1? A: y = "
+in_text = "Answer the following question: Q: What will happen if a ball is thrown at a wall? A:"
+max_new_tokens = 50  # Set higher max, let dynamic stopping handle it
 
 # Get generation analysis
 gen_acts, gen_texts, tokens = analyze_generation(
@@ -261,18 +299,21 @@ gen_acts, gen_texts, tokens = analyze_generation(
     tokenizer=tokenizer,
     sae=sae,
     input_text=in_text,
-    max_new_tokens=10,
+    max_new_tokens=max_new_tokens,
     temperature=0.7,
     top_p=0.9,
+    min_confidence=0.1,        # Stop if confidence drops below 5%
+    repetition_window=8,        # Look at last 8 tokens
+    max_repetition_ratio=0.5    # Stop if more than 50% tokens are repeated
 )
 
-# Print the final generated text
-print("\nFinal generated text:", gen_texts[-1])
+# Print generation progress
+print("\nGeneration steps:", len(gen_texts))
+print("Final text:", gen_texts[-1])
 
 #%% Visualization cell (run this to see the results)
 # Visualize generation process
 gen_figs = visualize_generation_activations(gen_acts, gen_texts)
 for fig in gen_figs:
     fig.show()
-
-
+# %%
