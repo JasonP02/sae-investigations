@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 import gc
-
+import traceback
 from config import GenerationConfig
 from models import ModelState, ExperimentResults
 from generation import analyze_generation
@@ -37,7 +37,10 @@ def run_multiple_experiments(
     Returns:
         ExperimentResults containing all experiment data and statistics
     """
+    print("Starting run_multiple_experiments")  # Debug print 1
+    
     if model_state is None:
+        print("Setting up model and SAE...")  # Debug print 2
         model_state = setup_model_and_sae(device)
     
     if config is None:
@@ -50,43 +53,39 @@ def run_multiple_experiments(
     generation_lengths = []
     all_generation_acts = []
     
+    print(f"Beginning {num_runs} runs...")  # Debug print 3
+    
     for i in range(num_runs):
-        try:
-            with torch.no_grad():  # Add no_grad context
-                # Run generation
-                gen_acts, gen_texts, tokens, stopping_reason = analyze_generation(
-                    model=model_state.model,
-                    tokenizer=model_state.tokenizer,
-                    sae=model_state.sae,
-                    input_text=prompt,
-                    config=config
-                )
-                
-                # Add the stopping reason to the Counter
-                if stopping_reason:
-                    stopping_reasons[stopping_reason] += 1
-                
-                # Process results immediately and clear original data
-                final_text = gen_texts[-1][len(prompt):]
-                all_texts.append(final_text)
-                all_tokens.extend(model_state.tokenizer.encode(final_text))
-                generation_lengths.append(len(final_text.split()))
-                
-                # Store generation acts
-                all_generation_acts.append(gen_acts)
-                
-                # Cleanup - remove reference to non-existent processed_acts
-                del gen_acts, gen_texts, tokens
-                torch.cuda.empty_cache()
-                gc.collect()
-        except Exception as e:
-            print(f"Error in run {i}: {str(e)}")
+        print(f"\nStarting run {i+1}/{num_runs}")  # Debug print 4
+        with torch.no_grad():  # Add no_grad context
+            print("Before analyze_generation call")  # Debug print 5
+            # Run generation
+            gen_acts, gen_texts, tokens, stopping_reason = analyze_generation(
+                model=model_state.model,
+                tokenizer=model_state.tokenizer,
+                sae=model_state.sae,
+                input_text=prompt,
+                config=config
+            )
+            print("After analyze_generation call")  # Debug print 6
+            # Add the stopping reason to the Counter
+            if stopping_reason:
+                stopping_reasons[stopping_reason] += 1
+            
+            # Process results immediately and clear original data
+            final_text = gen_texts[-1][len(prompt):]
+            all_texts.append(final_text)
+            all_tokens.extend(model_state.tokenizer.encode(final_text))
+            generation_lengths.append(len(final_text.split()))
+            
+            # Store generation acts
+            all_generation_acts.append(gen_acts)
+            
+            # Cleanup - remove reference to non-existent processed_acts
+            del gen_acts, gen_texts, tokens
             torch.cuda.empty_cache()
             gc.collect()
-            continue
-        
-        if progress_callback:
-            progress_callback()
+
     
     # Calculate statistics
     token_frequencies = Counter(all_tokens)
