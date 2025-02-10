@@ -6,7 +6,7 @@ This module provides functions for initializing models and components.
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae
-from config import ModelState
+from models import ModelState
 
 def setup_model_and_sae(device: str = None) -> ModelState:
     """

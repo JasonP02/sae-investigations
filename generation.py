@@ -165,14 +165,16 @@ def analyze_generation(
             # Collect activations
             step_acts = []
             for hidden_state in [outputs.hidden_states[10]]:
-                step_acts.append(sae.encode(hidden_state))
+                # Store both original and SAE-encoded activations
+                step_acts.append({
+                    'original': hidden_state.detach(),  # Original MLP activations
+                    'encoded': sae.encode(hidden_state)  # SAE-encoded sparse representation
+                })
             generation_acts.append(step_acts)
             
             # Store generated text
             if step % 5 == 0 or step == config.max_new_tokens - 1:
                 generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
-                if step % 5 == 0:
-                    print(f"Step {step}: Confidence = {top_prob:.3f}")
             
             # Check for EOS token
             if token_val == (config.eos_token_id or tokenizer.eos_token_id):

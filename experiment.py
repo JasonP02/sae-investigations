@@ -8,7 +8,8 @@ from typing import Dict, List, Tuple, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 
-from config import GenerationConfig, ModelState, ExperimentResults
+from config import GenerationConfig
+from models import ModelState, ExperimentResults
 from generation import analyze_generation
 from visualization import visualize_generation_activations
 from setup import setup_model_and_sae
@@ -64,6 +65,7 @@ def run_multiple_experiments(
     model_state: Optional[ModelState] = None,
     config: Optional[GenerationConfig] = None,
     device: Optional[str] = None,
+    progress_callback: Optional[callable] = None
 ) -> ExperimentResults:
     """
     Run multiple generation experiments and collect statistics.
@@ -74,6 +76,7 @@ def run_multiple_experiments(
         model_state: Pre-initialized ModelState (if None, will create new one)
         config: Generation configuration (uses default if None)
         device: Device to use (uses CUDA if available when None)
+        progress_callback: Optional callback function to update progress
     
     Returns:
         ExperimentResults containing all experiment data and statistics
@@ -93,8 +96,6 @@ def run_multiple_experiments(
     
     # Run experiments
     for i in range(num_runs):
-        print(f"\nRun {i+1}/{num_runs}")
-        
         # Capture output to parse stopping reason
         import io
         import sys
@@ -127,6 +128,10 @@ def run_multiple_experiments(
         all_tokens.extend(model_state.tokenizer.encode(final_text))
         generation_lengths.append(len(final_text.split()))
         all_generation_acts.append(gen_acts)
+        
+        # Update progress if callback provided
+        if progress_callback:
+            progress_callback()
     
     # Calculate statistics
     token_frequencies = Counter(all_tokens)
