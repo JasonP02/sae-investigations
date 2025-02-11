@@ -35,9 +35,9 @@ class GenerationConfig:
             filler_patterns (List[str]): Common filler patterns to detect
             phrase_end_tokens (Set[str]): Tokens that indicate phrase boundaries
     """
-    num_runs: int = 25
+    num_runs: int = 10
     max_new_tokens: int = 100
-    temperature: float = 0.1
+    temperature: float = 0.7
     top_p: float = 0.92
     do_sample: bool = True
     min_confidence: float = 0.2
@@ -51,7 +51,7 @@ class GenerationConfig:
     max_recent_phrases: int = 3
     phrase_context_window: int = 20
     pad_token_id: Optional[int] = None
-    eos_token_id: Optional[int] = None
+    eos_token_id: Optional[int] = 151643
     filler_patterns: List[str] = None
     phrase_end_tokens: Set[str] = None
     
@@ -91,6 +91,42 @@ class GenerationConfig:
             top_p=0.85,
             min_confidence=0.2,
             repetition_window=16,
-            max_ngram_repeats=1,
+            max_ngram_repeats=5,
             min_unique_ratio=0.5
+        )
+    
+    @classmethod
+    def normal(cls) -> 'GenerationConfig':
+        return cls(
+            max_new_tokens=1000,          # Longer generation length
+            do_sample=True,               # Keep sampling for variety
+            temperature=1.0,              # Standard temperature
+            top_p=1.0,                   # No filtering of token distribution
+            min_confidence=0.0,          # No confidence threshold
+            repetition_window=100,        # Large window
+            min_unique_ratio=0.0,        # No uniqueness constraint
+            max_recent_phrases=10,        # More phrases allowed
+            semantic_similarity_threshold=1.0,  # No similarity filtering
+            max_consecutive_fillers=1000,      # Many fillers allowed
+            phrase_context_window=100,         # Large context window
+            eos_token_id=151643
+        )
+    
+    @classmethod
+    def balanced(cls) -> 'GenerationConfig':
+        """Creates a configuration that allows natural completion while preventing degeneration."""
+        return cls(
+            max_new_tokens=250,          # Keep max length but allow early stopping
+            num_runs=5,
+            do_sample=True,               # Use sampling for natural text
+            temperature=0.8,              # Slightly reduced randomness
+            top_p=0.95,                  # Light filtering of unlikely tokens
+            min_confidence=0.1,          # Very light confidence threshold
+            repetition_window=50,         # Medium window for repetition
+            min_unique_ratio=0.15,       # Allow some repetition but catch loops
+            max_recent_phrases=10,         # Track reasonable number of phrases
+            semantic_similarity_threshold=0.85,  # Catch near-identical phrases
+            max_consecutive_fillers=10,   # Limit filler phrases
+            phrase_context_window=30,     # Medium context window
+            eos_token_id=151643          # Qwen's EOS token ID
         ) 

@@ -44,13 +44,13 @@ def run_multiple_experiments(
     all_tokens = []
     stopping_reasons = Counter()
     generation_lengths = []
-    all_generation_acts = []
+    all_generation_internals = [] 
         
     # Run experiments
     for i in range(num_runs):
         try:
             with torch.no_grad():
-                gen_acts, gen_texts, tokens, stopping_reason = generate_text(
+                generation_internals, gen_texts, tokens, stopping_reason = generate_text(
                     model=model_state.model,
                     tokenizer=model_state.tokenizer,
                     sae=model_state.sae,
@@ -65,9 +65,9 @@ def run_multiple_experiments(
                 all_texts.append(final_text)
                 all_tokens.extend(model_state.tokenizer.encode(final_text))
                 generation_lengths.append(len(final_text.split()))
-                all_generation_acts.append(gen_acts)
+                all_generation_internals.append(generation_internals)
                 
-                del gen_acts, gen_texts, tokens
+                del generation_internals, gen_texts, tokens
                 torch.cuda.empty_cache()
                 gc.collect()
 
@@ -98,13 +98,12 @@ def run_multiple_experiments(
     
     return ExperimentResults(
         model_state=model_state,
-        config=config,
+        config=config or GenerationConfig(),
         prompt=prompt,
         all_texts=all_texts,
         stopping_reasons=stopping_reasons,
         token_frequencies=token_frequencies_text,
         avg_length=avg_length,
         unique_ratio=unique_ratio,
-        generation_acts=all_generation_acts,
-        metadata={'num_runs': num_runs}
+        generation_internals=all_generation_internals,
     ) 

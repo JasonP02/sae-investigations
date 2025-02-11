@@ -3,6 +3,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae
 from config import GenerationConfig
+from sae_investigations.models import ModelInternals
 
 FILLER_PATTERNS: List[str] = [
     "is a", "is an", "is the", "and the", "then the",
@@ -18,7 +19,15 @@ def generate_text(
     sae: Sae,
     input_text: str,
     config: GenerationConfig = None,
-) -> Tuple[List, List, torch.Tensor, str]:
+) -> Tuple[List[ModelInternals], List[str], torch.Tensor, str]:
+    """Generate text while capturing model internals.
+    
+    Returns:
+        - List of ModelInternals for each generation step
+        - List of generated texts
+        - Final token IDs
+        - Stopping reason
+    """
     if config is None:
         config = GenerationConfig.default()
 
@@ -32,9 +41,17 @@ def generate_text(
     current_phrase = ""
     stopping_reason = None
 
+    generation_internals = []
+
     with torch.inference_mode():
         for step in range(config.max_new_tokens):
-            outputs = model(current_ids, output_hidden_states=True)
+            outputs = model(
+                current_ids, 
+                output_hidden_states=True,
+                output_attentions=True,
+                use_cache=False  # Needed to get all internals
+            )
+            
             next_token_logits = outputs.logits[:, -1:, :]
 
             if config.do_sample:
@@ -112,7 +129,38 @@ def generate_text(
                     stopping_reason = f"Low unique token ratio ({unique_ratio:.2f})"
                     break
 
+            step_internals = ModelInternals(
+                hidden_states=outputs.hidden_states,
+                attention={
+                    i: {
+                        'patterns': outputs.attentions[i],
+                        'values': outputs.past_key_values[i][1],
+                        'keys': outputs.past_key_values[i][0],
+                        'queries': outputs.past_key_values[i][2]
+                    }
+                    for i in range(len(outputs.attentions))
+                },
+                mlp={
+                    i: {
+                        'pre_activation': outputs.hidden_states[i],
+                        'post_activation': outputs.hidden_states[i+1]
+                    }
+                    for i in range(len(outputs.hidden_states)-1)
+                },
+                residual=[h for h in outputs.hidden_states],
+                token=next_token[0,0].item(),
+                token_text=tokenizer.decode([next_token[0,0].item()]),
+                logits=outputs.logits[:,-1:,:],
+                probs=torch.nn.functional.softmax(outputs.logits[:,-1:,:], dim=-1)
+            )
+            
+            step_internals.mlp[10]['sae_encoded'] = sae.encode(
+                outputs.hidden_states[10]
+            )
+            
+            generation_internals.append(step_internals)
+
     while len(generated_texts) < len(generation_acts):
         generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
 
-    return generation_acts, generated_texts, current_ids[0], stopping_reason or "Maximum tokens reached" 
+    return generation_internals, generated_texts, stopping_reason or "Maximum tokens reached" 

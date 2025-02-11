@@ -8,6 +8,7 @@ from collections import Counter
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 from config import GenerationConfig
+import torch
 
 @dataclass
 class ModelState:
@@ -48,7 +49,7 @@ class ExperimentResults:
         token_frequencies: Counter of most common tokens
         avg_length: Average length of generations
         unique_ratio: Average ratio of unique tokens
-        generation_acts: Optional list of activation patterns
+        generation_internals: List of ModelInternals for each run
         metadata: Additional experiment metadata
     """
     model_state: ModelState
@@ -59,7 +60,7 @@ class ExperimentResults:
     token_frequencies: Counter
     avg_length: float
     unique_ratio: float
-    generation_acts: Optional[List] = None
+    generation_internals: Optional[List[List[ModelInternals]]] = None  # List[runs][steps]
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -70,11 +71,64 @@ class ExperimentResults:
             'token_frequencies': self.token_frequencies,
             'avg_length': self.avg_length,
             'unique_ratio': self.unique_ratio,
-            'generation_acts': self.generation_acts,
+            'generation_internals': [
+                [step.to_numpy() for step in run] 
+                for run in (self.generation_internals or [])
+            ],
             'metadata': {
                 'model_name': self.model_state.model_name,
                 'sae_name': self.model_state.sae_name,
                 'prompt': self.prompt,
                 **self.metadata
             }
+        }
+
+@dataclass
+class ModelInternals:
+    """Container for model's internal states during generation.
+    
+    Attributes:
+        hidden_states: List of tensors [batch, seq_len, hidden_dim] for each layer
+        attention: Dict containing attention patterns for each layer
+            - scores: Raw attention scores
+            - patterns: Softmaxed attention weights
+            - values: Value vectors
+            - keys: Key vectors
+            - queries: Query vectors
+        mlp: Dict containing MLP internals for each layer
+            - pre_activation: Input to MLP
+            - post_activation: Output after activation
+            - sae_encoded: SAE encoded version (only for layer 10)
+        residual: Residual stream values at each layer
+        token: The generated token at this step
+        token_text: The text representation of the token
+        logits: Raw logits for token prediction
+        probs: Softmaxed probabilities
+    """
+    hidden_states: List[torch.Tensor]
+    attention: Dict[int, Dict[str, torch.Tensor]]
+    mlp: Dict[int, Dict[str, torch.Tensor]]
+    residual: List[torch.Tensor]
+    token: int
+    token_text: str
+    logits: torch.Tensor
+    probs: torch.Tensor
+    
+    def to_numpy(self) -> Dict[str, Any]:
+        """Convert tensors to numpy arrays for visualization."""
+        return {
+            'hidden_states': [h.detach().cpu().numpy() for h in self.hidden_states],
+            'attention': {
+                layer: {k: v.detach().cpu().numpy() 
+                       for k, v in layer_data.items()}
+                for layer, layer_data in self.attention.items()
+            },
+            'mlp': {
+                layer: {k: v.detach().cpu().numpy() 
+                       for k, v in layer_data.items()}
+                for layer, layer_data in self.mlp.items()
+            },
+            'residual': [r.detach().cpu().numpy() for r in self.residual],
+            'logits': self.logits.detach().cpu().numpy(),
+            'probs': self.probs.detach().cpu().numpy()
         } 
