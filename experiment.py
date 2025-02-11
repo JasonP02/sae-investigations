@@ -49,15 +49,7 @@ def run_multiple_experiments(
     # Run experiments
     for i in range(num_runs):
         try:
-            print(f"\nStarting run {i}...", flush=True)
-            print("Config:", config, flush=True)
-            print("Model device:", model_state.model.device, flush=True)
-            print("SAE device:", model_state.sae.device, flush=True)
-            print("Input prompt:", prompt, flush=True)
-            
-            with torch.no_grad():  # Add no_grad context
-                # Run generation
-                print("About to call generate_text...", flush=True)
+            with torch.no_grad():
                 gen_acts, gen_texts, tokens, stopping_reason = generate_text(
                     model=model_state.model,
                     tokenizer=model_state.tokenizer,
@@ -65,30 +57,23 @@ def run_multiple_experiments(
                     input_text=prompt,
                     config=config
                 )
-                print("Finished generate_text call", flush=True)
                 
-                # Add the stopping reason to the Counter
                 if stopping_reason:
                     stopping_reasons[stopping_reason] += 1
                 
-                # Process results immediately and clear original data
                 final_text = gen_texts[-1][len(prompt):]
                 all_texts.append(final_text)
                 all_tokens.extend(model_state.tokenizer.encode(final_text))
                 generation_lengths.append(len(final_text.split()))
-                
-                # Store generation acts
                 all_generation_acts.append(gen_acts)
                 
-                # Cleanup - remove reference to non-existent processed_acts
                 del gen_acts, gen_texts, tokens
                 torch.cuda.empty_cache()
                 gc.collect()
 
         except Exception as e:
             print(f"Error in run {i}: {str(e)}")
-            print(f"Error type: {type(e)}")
-            print(f"Error traceback: {traceback.format_exc()}")
+            print(traceback.format_exc())
             torch.cuda.empty_cache()
             gc.collect()
             continue
