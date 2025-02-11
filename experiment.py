@@ -6,58 +6,15 @@ import torch
 from collections import Counter
 from typing import Dict, List, Tuple, Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from sparsify import Sae # type: ignore
+from sparsify import Sae
+import gc
+import traceback
 
 from config import GenerationConfig
 from models import ModelState, ExperimentResults
-from generation import analyze_generation
+from generation import generate_text
 from visualization import visualize_generation_activations
 from setup import setup_model_and_sae
-
-def run_generation_experiment(
-    prompt: str,
-    model_state: Optional[ModelState] = None,
-    config: Optional[GenerationConfig] = None,
-    device: Optional[str] = None,
-    visualize: bool = True
-) -> Tuple[List, List[str], torch.Tensor]:
-    """
-    Run a complete generation experiment with visualization.
-    
-    Args:
-        prompt: The input text to generate from
-        model_state: Pre-initialized ModelState (if None, will create new one)
-        config: Generation configuration (uses default if None)
-        device: Device to use (uses CUDA if available when None)
-        visualize: Whether to display visualization plots (default: True)
-    
-    Returns:
-        Tuple of (generation_acts, generated_texts, tokens)
-    """
-    # Setup if components not provided
-    if model_state is None:
-        model_state = setup_model_and_sae(device)
-    
-    # Run generation
-    gen_acts, gen_texts, tokens = analyze_generation(
-        model=model_state.model,
-        tokenizer=model_state.tokenizer,
-        sae=model_state.sae,
-        input_text=prompt,
-        config=config
-    )
-    
-    # Print results
-    print("\nGeneration steps:", len(gen_texts))
-    print(gen_texts[-1])
-    
-    # Visualize
-    if visualize:
-        figures = visualize_generation_activations(gen_acts, gen_texts)
-        for fig in figures:
-            fig.show()
-            
-    return gen_acts, gen_texts, tokens
 
 def run_multiple_experiments(
     prompt: str,
@@ -81,14 +38,6 @@ def run_multiple_experiments(
     Returns:
         ExperimentResults containing all experiment data and statistics
     """
-    print("Starting run_multiple_experiments")  # Debug print 1
-    
-    if model_state is None:
-        print("Setting up model and SAE...")  # Debug print 2
-        model_state = setup_model_and_sae(device)
-    
-    if config is None:
-        config = GenerationConfig.default()
     
     # Store results
     all_texts = []
@@ -96,21 +45,27 @@ def run_multiple_experiments(
     stopping_reasons = Counter()
     generation_lengths = []
     all_generation_acts = []
-    
-    print(f"Beginning {num_runs} runs...")  # Debug print 3
-    
+        
     # Run experiments
     for i in range(num_runs):
         try:
+            print(f"\nStarting run {i}...", flush=True)
+            print("Config:", config, flush=True)
+            print("Model device:", model_state.model.device, flush=True)
+            print("SAE device:", model_state.sae.device, flush=True)
+            print("Input prompt:", prompt, flush=True)
+            
             with torch.no_grad():  # Add no_grad context
                 # Run generation
-                gen_acts, gen_texts, tokens, stopping_reason = analyze_generation(
+                print("About to call generate_text...", flush=True)
+                gen_acts, gen_texts, tokens, stopping_reason = generate_text(
                     model=model_state.model,
                     tokenizer=model_state.tokenizer,
                     sae=model_state.sae,
                     input_text=prompt,
                     config=config
                 )
+                print("Finished generate_text call", flush=True)
                 
                 # Add the stopping reason to the Counter
                 if stopping_reason:
@@ -129,8 +84,11 @@ def run_multiple_experiments(
                 del gen_acts, gen_texts, tokens
                 torch.cuda.empty_cache()
                 gc.collect()
+
         except Exception as e:
             print(f"Error in run {i}: {str(e)}")
+            print(f"Error type: {type(e)}")
+            print(f"Error traceback: {traceback.format_exc()}")
             torch.cuda.empty_cache()
             gc.collect()
             continue

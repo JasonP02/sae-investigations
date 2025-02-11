@@ -32,7 +32,7 @@ def setup_model_and_sae(device: str = None) -> ModelState:
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Load model with optimizations
+    # Load model with optimizations but without compilation
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map={"": device},
@@ -41,24 +41,6 @@ def setup_model_and_sae(device: str = None) -> ModelState:
         max_memory={0: "5GB"},  # Reserve some VRAM for other operations
         use_flash_attention_2=False,  # RTX 2060 doesn't support it
     ).to(device)
-    
-    # Try to compile model for speed
-    try:
-        print("Attempting to compile model for speed...")
-        model = torch.compile(
-            model,
-            mode="reduce-overhead",
-            fullgraph=False,
-            options={
-                "max_autotune": False,
-                "max_parallel_gemm": 1,  # More conservative for 6GB VRAM
-                "triton.cudagraphs": False,  # Disable cudagraphs for older GPUs
-            }
-        )
-        print("Model compiled successfully!")
-    except Exception as e:
-        print(f"Could not compile model (requires PyTorch 2.0+): {e}")
-        print("Continuing without compilation...")
     
     # Move SAE to half precision for consistency
     sae = sae.to(torch.float16)

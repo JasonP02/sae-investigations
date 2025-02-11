@@ -85,6 +85,7 @@ class GenerationActivationVisualizer(BaseVisualizer):
             if step % step_interval == 0:
                 layer_acts = acts[0]
                 # Get original activations
+                print(f" acts: {acts}")
                 step_acts_original.append(layer_acts['original'].cpu().numpy()[0, -1])
                 # Get encoded activations and indices
                 encoded_acts = layer_acts['encoded']

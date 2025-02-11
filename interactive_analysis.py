@@ -1,3 +1,17 @@
+#%%
+# import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True,  # This forces reconfiguration
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
 #%% Model initialization cell (run ONCE only)
 import torch
 from setup import setup_model_and_sae
@@ -23,7 +37,7 @@ importlib.reload(visualization)
 # Re-import after reload
 from config import GenerationConfig
 from setup import setup_model_and_sae
-from experiment import run_generation_experiment, run_multiple_experiments
+from experiment import run_multiple_experiments
 from visualization import visualize_generation_activations, visualize_experiment_results
 from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter/IPython environments
 
@@ -43,19 +57,54 @@ A:"
 # Use precise configuration for consistent outputs
 config = GenerationConfig.precise()
 
+# Set debug mode
+DEBUG = True
+
 # Run multiple experiments, returns ExperimentResults object
 print(f"\nRunning {config.num_runs} experiments with prompt:\n{prompt}\n")
 
-with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
+if DEBUG:
+    # Run without tqdm when debugging
     results = run_multiple_experiments(
         prompt=prompt,
         num_runs=config.num_runs,  
         config=config,
-        model_state=model_state,
-        progress_callback=lambda: pbar.update(1)
+        model_state=model_state
     )
+else:
+    # Use tqdm for production runs
+    with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
+        results = run_multiple_experiments(
+            prompt=prompt,
+            num_runs=config.num_runs,  
+            config=config,
+            model_state=model_state,
+            progress_callback=lambda: pbar.update(1)
+        )
 
 #%% Visualize activations for first generation
+
+import importlib
+import experiment
+import config
+import setup
+import visualization
+import models
+
+# Reload modules to get latest changes
+importlib.reload(models)
+importlib.reload(experiment)
+importlib.reload(config)
+importlib.reload(setup)
+importlib.reload(visualization)
+
+# Re-import after reload
+from config import GenerationConfig
+from setup import setup_model_and_sae
+from experiment import run_multiple_experiments
+from visualization import visualize_generation_activations, visualize_experiment_results
+from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter/IPython environments
+
 print("\nVisualizing activations for first generation...")
 # Get the first generation's activations and text
 first_gen_acts = results.generation_acts[0]  # Get first run's activations

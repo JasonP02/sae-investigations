@@ -35,26 +35,21 @@ class GenerationConfig:
             filler_patterns (List[str]): Common filler patterns to detect
             phrase_end_tokens (Set[str]): Tokens that indicate phrase boundaries
     """
-    # Generation parameters
     num_runs: int = 25
     max_new_tokens: int = 100
     temperature: float = 0.1
     top_p: float = 0.92
     do_sample: bool = True
-    min_confidence: float = 0.05
-    
-    # Repetition control
-    repetition_window: int = 12
+    min_confidence: float = 0.2
+    repetition_window: int = 16
     max_repetition_ratio: float = 0.5
     ngram_size: int = 6
-    max_ngram_repeats: int = 2
-    min_unique_ratio: float = 0.4
+    max_ngram_repeats: int = 1
+    min_unique_ratio: float = 0.5
     semantic_similarity_threshold: float = 0.8
     max_consecutive_fillers: int = 2
     max_recent_phrases: int = 3
     phrase_context_window: int = 20
-    
-    # Special tokens
     pad_token_id: Optional[int] = None
     eos_token_id: Optional[int] = None
     filler_patterns: List[str] = None
