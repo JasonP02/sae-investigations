@@ -1,16 +1,3 @@
-#%%
-# import logging
-import sys
-
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    force=True,  # This forces reconfiguration
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 
 #%% Model initialization cell (run ONCE only)
 import torch
@@ -57,30 +44,17 @@ A:"
 # Use precise configuration for consistent outputs
 config = GenerationConfig.precise()
 
-# Set debug mode
-DEBUG = True
 
-# Run multiple experiments, returns ExperimentResults object
-print(f"\nRunning {config.num_runs} experiments with prompt:\n{prompt}\n")
 
-if DEBUG:
-    # Run without tqdm when debugging
+# Use tqdm for production runs
+with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
     results = run_multiple_experiments(
         prompt=prompt,
         num_runs=config.num_runs,  
         config=config,
-        model_state=model_state
+        model_state=model_state,
+        progress_callback=lambda: pbar.update(1)
     )
-else:
-    # Use tqdm for production runs
-    with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
-        results = run_multiple_experiments(
-            prompt=prompt,
-            num_runs=config.num_runs,  
-            config=config,
-            model_state=model_state,
-            progress_callback=lambda: pbar.update(1)
-        )
 
 #%% Visualize activations for first generation
 
@@ -104,6 +78,9 @@ from setup import setup_model_and_sae
 from experiment import run_multiple_experiments
 from visualization import visualize_generation_activations, visualize_experiment_results
 from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter/IPython environments
+
+# Use precise configuration for consistent outputs
+config = GenerationConfig.precise()
 
 print("\nVisualizing activations for first generation...")
 # Get the first generation's activations and text
@@ -155,6 +132,30 @@ for fig in activation_figures:
         print(f"Error displaying activation figure: {e}")
 
 #%% Visualize experiment results
+
+import importlib
+import experiment
+import config
+import setup
+import visualization
+import models
+
+# Reload modules to get latest changes
+importlib.reload(models)
+importlib.reload(experiment)
+importlib.reload(config)
+importlib.reload(setup)
+importlib.reload(visualization)
+
+# Re-import after reload
+from config import GenerationConfig
+from setup import setup_model_and_sae
+from experiment import run_multiple_experiments
+from visualization import visualize_generation_activations, visualize_experiment_results
+from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter/IPython environments
+
+# Use precise configuration for consistent outputs
+config = GenerationConfig.precise()
 
 # Create and display visualizations
 figures = visualize_experiment_results(results, config.num_runs)
