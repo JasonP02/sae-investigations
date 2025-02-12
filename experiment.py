@@ -70,8 +70,6 @@ def run_multiple_experiments(
                     config=config
                 )
                 
-                results.save_internals(i, generation_internals)
-                
                 if stopping_reason:
                     stopping_reasons[stopping_reason] += 1
                 

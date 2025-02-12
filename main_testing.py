@@ -23,12 +23,13 @@ if torch.cuda.is_available():
     gc.collect()
 
 # %%
-prompt = """You are an AI that solves problems step-by-step with detailed reasoning. Break the problem down into chunks that you can solve. 
-Verify the correctness of these chunks before moving on. Always explain your thought process before providing the final answer. Solve your problem in the present tense. This is NOT a multiple choice question. If numbers are not provided, they are not needed.
-Question: If a ball is thrown by a person at a wall that is 10 feet away, what will happen to the ball within 5 seconds of the throw? 
-Answer:"""
+prompt = "You are an AI that solves problems step-by-step with detailed reasoning. Break the problem down into chunks that you can solve. \
+Verify the correctness of these chunks before moving on. Always explain your thought process before providing the final answer. \
+Solve your problem in the present tense. This is NOT a multiple choice question. If numbers are not provided, they are not needed. \
+Question: If a ball is thrown by a person at a wall that is 10 feet away, what will happen to the ball within 5 seconds of the throw? \
+Answer:"
 
-config = GenerationConfig.balanced()
+config = GenerationConfig()
 # Run experiments
 with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
     results = run_multiple_experiments(
