@@ -101,16 +101,12 @@ class GenerationConfig:
     save_every_n_steps: int = 200
     
     # Analysis Mode
-    store_mode: str = "disk"  # Options: "disk", "memory", or "off"
+    store_mode: str = "off"  # Options: "disk", "memory", or "off"
 
     def __post_init__(self):
         """Initialize default values for complex types after instance creation."""
         if self.filler_patterns is None:
-            self.filler_patterns = [
-                "is a", "is an", "is the", "and the", "then the",
-                "to the", "of the", "in the", "on the", "at the",
-                "and then", "so the", "which is", "that is"
-            ]
+            self.filler_patterns = []
         if self.phrase_end_tokens is None:
             self.phrase_end_tokens = {'.', '!', '?', ',', ';', ':'}
         if not isinstance(self.save_layers, set):

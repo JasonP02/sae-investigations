@@ -43,15 +43,23 @@ class TokenGenerator:
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
+        self.past_key_values = None  # For KV caching
     
     def get_next_token(self, current_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Dict]:
         """Generate next token using the model's predictions."""
+        # Use KV cache if available
+        input_ids = current_ids[:, -1:] if self.past_key_values is not None else current_ids
+        
         outputs = self.model(
-            current_ids, 
-            output_hidden_states=True,
-            output_attentions=True,
-            use_cache=False
+            input_ids,
+            output_hidden_states=True,  # Keep getting all internals
+            output_attentions=True,     # Keep getting all internals
+            use_cache=True,             # Enable KV caching
+            past_key_values=self.past_key_values
         )
+        
+        # Update KV cache
+        self.past_key_values = outputs.past_key_values
         
         if torch.isnan(outputs.logits).any():
             raise RuntimeError("Model produced NaN logits")
@@ -72,6 +80,10 @@ class TokenGenerator:
             
         next_token = torch.multinomial(probs, num_samples=1)
         return next_token, outputs, probs
+    
+    def reset_cache(self):
+        """Reset the KV cache. Call this at the end of generation."""
+        self.past_key_values = None
 
 class StoppingCriteria:
     """Manages generation stopping conditions."""
@@ -242,5 +254,8 @@ def generate_text(
     # Ensure output consistency
     while len(generated_texts) < len(generation_acts):
         generated_texts.append(tokenizer.decode(current_ids[0], skip_special_tokens=True))
+    
+    # Clean up KV cache
+    token_gen.reset_cache()
     
     return generation_internals, generated_texts, current_ids, stopping_reason or "Maximum tokens reached"

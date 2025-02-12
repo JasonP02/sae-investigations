@@ -39,7 +39,7 @@ prompt = \
 You should try to evaluate your thought process as you go along, 
 and revise it if there are inconsistencies using phrases like (so, I said; wait, let me think; etc).
 This is NOT a multiple choice question. If numbers are not provided, they are not needed.
-Question: If a ball is thrown by a person at a wall that is relatively close, what will happen to the ball shortly after the throw? 
+Question: 
 Answer:
 """
 
