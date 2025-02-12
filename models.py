@@ -82,17 +82,17 @@ class ModelInternals:
 
 @dataclass
 class ExperimentResults:
-    """Container for experiment results and analysis."""
-    model_state: ModelState
-    config: GenerationConfig
-    prompt: str
+    """Container for experiment results and metadata."""
+    model_state: Optional[ModelState] = None
+    config: Optional[GenerationConfig] = None
+    prompt: str = ""
+    experiment_id: str = field(default_factory=lambda: datetime.now().strftime('%Y%m%d_%H%M%S'))
+    experiment_path: str = field(init=False)
     all_texts: List[str] = field(default_factory=list)
     all_tokens: List[int] = field(default_factory=list)
     generation_lengths: List[int] = field(default_factory=list)
     stopping_reasons: Counter = field(default_factory=Counter)
-    token_frequencies: Counter = field(default_factory=Counter)
-    avg_length: float = 0.0
-    unique_ratio: float = 0.0
+    generation_internals: Optional[List[List[ModelInternals]]] = None  # For memory mode
     
     @classmethod
     def clear_all_experiment_files(cls):
@@ -113,9 +113,7 @@ class ExperimentResults:
     
     def __post_init__(self):
         """Setup experiment directory structure."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.experiment_id = timestamp
-        self.experiment_path = f"experiments/{timestamp}"
+        self.experiment_path = f"experiments/{self.experiment_id}"
         
         # Create directory structure
         for subdir in ['metadata', 'runs', 'stats']:
@@ -145,10 +143,10 @@ class ExperimentResults:
         """Save experiment configuration and metadata."""
         metadata = {
             'timestamp': self.experiment_id,
-            'model': self.model_state.model_name,
-            'sae': self.model_state.sae_name,
+            'model': self.model_state.model_name if self.model_state else None,
+            'sae': self.model_state.sae_name if self.model_state else None,
             'prompt': self.prompt,
-            'config': self.config.to_dict()
+            'config': self.config.to_dict() if self.config else None
         }
         
         with open(f"{self.experiment_path}/metadata/config.json", 'w') as f:

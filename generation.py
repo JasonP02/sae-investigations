@@ -58,7 +58,7 @@ def generate_text(
     consecutive_fillers = 0
     current_phrase = ""
     stopping_reason = None
-    generation_internals = []
+    generation_internals = []  # Store all internals if in memory mode
 
     logger.info("Beginning generation loop")
     with torch.inference_mode():
@@ -201,14 +201,18 @@ def generate_text(
                 )
 
                 # Convert to numpy and save if it's a save step
-                if step % config.save_every_n_steps == 0:
-                    numpy_internals = step_internals.to_numpy()
-                    results.save_step_internals(run_idx=run_idx, step_idx=step, internals=numpy_internals)
-                    logger.debug(f"Saved model state at step {step}")
+                if config.store_mode == "memory":
+                    generation_internals.append(step_internals)
+                elif config.store_mode == "disk":
+                    if step % config.save_every_n_steps == 0:
+                        numpy_internals = step_internals.to_numpy()
+                        results.save_step_internals(run_idx=run_idx, step_idx=step, internals=numpy_internals)
+                        logger.debug(f"Saved model state at step {step}")
 
-                # Clear CUDA memory
-                del step_internals
-                torch.cuda.empty_cache()
+                # Clear CUDA memory if in disk mode
+                if config.store_mode == "disk":
+                    del step_internals
+                    torch.cuda.empty_cache()
                 
             except Exception as e:
                 logger.error(f"Error during generation step {step}: {str(e)}", exc_info=True)

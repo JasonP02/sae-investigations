@@ -10,6 +10,7 @@ from models import ExperimentResults
 import torch
 import gc
 from tqdm import tqdm
+import numpy as np
 
 # %%
 import os
@@ -27,7 +28,7 @@ if torch.cuda.is_available():
 # %%
 from models import ExperimentResults 
 
-clear = False
+clear = True
 if clear:
     ExperimentResults.clear_all_experiment_files()
 
@@ -41,16 +42,32 @@ Question: If a ball is thrown by a person at a wall that is relatively close, wh
 Answer:
 """
 
-config = GenerationConfig()
-# Run experiments
-with tqdm(total=config.num_runs, desc="Generating responses") as pbar:
-    results = run_multiple_experiments(
-        prompt=prompt,
-        num_runs=config.num_runs,  
-        config=config,
-        model_state=model_state,
-        progress_callback=lambda: pbar.update(1)
-    )
+# Example usage
+config = GenerationConfig(
+    store_mode="memory",  # or "disk"
+    num_runs=1,  # We'll set this based on store_mode after creation
+    max_new_tokens=200,
+    save_every_n_steps=1  # Save every step in disk mode
+)
+
+# Update num_runs based on store_mode
+config.num_runs = 1 if config.store_mode=="memory" else 5
+
+results = run_multiple_experiments(
+    prompt=prompt,
+    num_runs=config.num_runs,
+    model_state=model_state,
+    config=config
+)
+
+# Access results
+if config.store_mode == "memory":
+    # Access all internals directly
+    run0_internals = results.generation_internals[0]  # First run
+    step0_internals = run0_internals[0]  # First step
+else:
+    # Load from disk as needed
+    numpy_data = np.load(f"{results.experiment_path}/runs/run_000/step_0000.npz")
 
 # Visualize results
 visualize_experiment_results(results)

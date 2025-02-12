@@ -62,6 +62,8 @@ class GenerationConfig:
             debug_logging (bool): Enable detailed debug logging (default: False)
             log_frequency (int): Log progress every n steps (default: 10)
             save_every_n_steps (int): Save model states every n steps (default: 100)
+        Analysis Mode:
+            store_mode (str): Storage mode for results ("disk" or "memory")
     """
     
     # Generation Control
@@ -97,6 +99,9 @@ class GenerationConfig:
     debug_logging: bool = False
     log_frequency: int = 10
     save_every_n_steps: int = 200
+    
+    # Analysis Mode
+    store_mode: str = "disk"  # Options: "disk" or "memory"
 
     def __post_init__(self):
         """Initialize default values for complex types after instance creation."""

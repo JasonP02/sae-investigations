@@ -50,13 +50,14 @@ def run_multiple_experiments(
         config=config or GenerationConfig(),
         prompt=prompt,
         all_texts=[],
-        stopping_reasons=Counter(),
-        token_frequencies=Counter(),
-        avg_length=0,
-        unique_ratio=0
+        all_tokens=[],
+        generation_lengths=[],
+        stopping_reasons=Counter()
     )
 
-    # Run experiments
+    if config.store_mode == "memory":
+        all_internals = []
+
     for i in range(num_runs):
         try:
             with torch.no_grad():
@@ -82,10 +83,12 @@ def run_multiple_experiments(
                 all_tokens.extend(model_state.tokenizer.encode(final_text))
                 generation_lengths.append(len(final_text.split()))
                 
-                # Clean up memory
-                del generation_internals, gen_texts, tokens
-                torch.cuda.empty_cache()    
-                gc.collect()
+                if config.store_mode == "memory":
+                    all_internals.append(generation_internals)
+                else:
+                    del generation_internals
+                    torch.cuda.empty_cache()
+                    gc.collect()
 
         except Exception as e:
             print(f"Error in run {i}: {str(e)}")
@@ -102,5 +105,8 @@ def run_multiple_experiments(
     results.all_tokens = all_tokens  # Add this field to ExperimentResults
     results.stopping_reasons = stopping_reasons
     results.generation_lengths = generation_lengths
+    
+    if config.store_mode == "memory":
+        results.generation_internals = all_internals
     
     return results 
