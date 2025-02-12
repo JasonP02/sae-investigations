@@ -2,8 +2,8 @@
 Configuration classes for generation parameters.
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Set
+from dataclasses import dataclass, field
+from typing import Optional, List, Set, Dict
 
 @dataclass
 class GenerationConfig:
@@ -34,11 +34,19 @@ class GenerationConfig:
             eos_token_id (Optional[int]): ID of end-of-sequence token
             filler_patterns (List[str]): Common filler patterns to detect
             phrase_end_tokens (Set[str]): Tokens that indicate phrase boundaries
+        
+        Layer selection for saving internals
+        save_layers (Set[int]): Set of layers to save
+        save_frequency: int = 1  # Save every nth step
+        
+        Logging parameters
+        debug_logging: bool = False
+        log_frequency: int = 10  # Log progress every n steps
     """
-    num_runs: int = 10
+    num_runs: int = 5
     max_new_tokens: int = 100
-    temperature: float = 0.7
-    top_p: float = 0.92
+    temperature: float = 0.8
+    top_p: float = 0.95
     do_sample: bool = True
     min_confidence: float = 0.2
     repetition_window: int = 16
@@ -51,9 +59,13 @@ class GenerationConfig:
     max_recent_phrases: int = 3
     phrase_context_window: int = 20
     pad_token_id: Optional[int] = None
-    eos_token_id: Optional[int] = 151643
+    eos_token_id: Optional[int] = None
     filler_patterns: List[str] = None
     phrase_end_tokens: Set[str] = None
+    save_layers: Set[int] = field(default_factory=lambda: {10})
+    save_frequency: int = 1  # Save every nth step
+    debug_logging: bool = False
+    log_frequency: int = 10  # Log progress every n steps
     
     def __post_init__(self):
         """Initialize default values for complex types after instance creation."""
@@ -65,6 +77,8 @@ class GenerationConfig:
             ]
         if self.phrase_end_tokens is None:
             self.phrase_end_tokens = {'.', '!', '?', ',', ';', ':'}
+        if not isinstance(self.save_layers, set):
+            self.save_layers = set(self.save_layers)
     
     @classmethod
     def default(cls) -> 'GenerationConfig':
@@ -72,31 +86,7 @@ class GenerationConfig:
         return cls()
     
     @classmethod
-    def creative(cls) -> 'GenerationConfig':
-        """Creates a configuration optimized for creative, diverse outputs."""
-        return cls(
-            temperature=1.0,
-            top_p=0.95,
-            min_confidence=0.05,
-            repetition_window=8,
-            max_ngram_repeats=3,
-            min_unique_ratio=0.3
-        )
-    
-    @classmethod
-    def precise(cls) -> 'GenerationConfig':
-        """Creates a configuration optimized for precise, focused outputs."""
-        return cls(
-            temperature=0.7,
-            top_p=0.85,
-            min_confidence=0.2,
-            repetition_window=16,
-            max_ngram_repeats=5,
-            min_unique_ratio=0.5
-        )
-    
-    @classmethod
-    def normal(cls) -> 'GenerationConfig':
+    def chaos(cls) -> 'GenerationConfig':
         return cls(
             max_new_tokens=1000,          # Longer generation length
             do_sample=True,               # Keep sampling for variety
@@ -109,14 +99,14 @@ class GenerationConfig:
             semantic_similarity_threshold=1.0,  # No similarity filtering
             max_consecutive_fillers=1000,      # Many fillers allowed
             phrase_context_window=100,         # Large context window
-            eos_token_id=151643
+            eos_token_id=None
         )
     
     @classmethod
     def balanced(cls) -> 'GenerationConfig':
         """Creates a configuration that allows natural completion while preventing degeneration."""
         return cls(
-            max_new_tokens=250,          # Keep max length but allow early stopping
+            max_new_tokens=100,          # Keep max length but allow early stopping
             num_runs=5,
             do_sample=True,               # Use sampling for natural text
             temperature=0.8,              # Slightly reduced randomness
@@ -128,5 +118,16 @@ class GenerationConfig:
             semantic_similarity_threshold=0.85,  # Catch near-identical phrases
             max_consecutive_fillers=10,   # Limit filler phrases
             phrase_context_window=30,     # Medium context window
-            eos_token_id=151643          # Qwen's EOS token ID
-        ) 
+            eos_token_id=None          # Qwen's EOS token ID
+        )
+
+
+    def to_dict(self) -> Dict:
+        """Convert config to JSON-serializable dict"""
+        return {
+            **{k: v for k, v in self.__dict__.items() 
+               if k not in {'filler_patterns', 'phrase_end_tokens', 'save_layers'}},
+            'filler_patterns': list(self.filler_patterns),
+            'phrase_end_tokens': list(self.phrase_end_tokens),
+            'save_layers': list(self.save_layers)  # Convert set to list for JSON
+        } 

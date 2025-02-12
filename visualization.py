@@ -5,49 +5,54 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from models import ExperimentResults, ModelInternals
+from einops import rearrange
 
-def visualize_experiment_results(results: Union[ExperimentResults, Dict]) -> List[go.Figure]:
-    """Create core visualizations for experiment results."""
-    if not isinstance(results, dict):
-        results = results.to_dict()
+def visualize_experiment_results(results: ExperimentResults) -> List[go.Figure]:
+    """Create visualizations for experiment-level results.
     
+    Args:
+        results: ExperimentResults containing experiment data
+        
+    Returns:
+        List of plotly figures showing experiment statistics
+    """
     figures = []
     
-    # # 1. Generation Statistics
-    # fig_stats = go.Figure()
-    # fig_stats.add_trace(go.Bar(
-    #     x=['Average Length', 'Unique Token Ratio'],
-    #     y=[results['avg_length'], results['unique_ratio']*100],
-    #     text=[f"{results['avg_length']:.1f}", f"{results['unique_ratio']:.2%}"],
-    #     textposition='auto',
-    # ))
-    # fig_stats.update_layout(
-    #     title="Generation Statistics",
-    #     height=400, width=600,
-    #     showlegend=False
-    # )
-    # figures.append(fig_stats)
+    # 1. Generation Statistics
+    fig_stats = go.Figure()
+    fig_stats.add_trace(go.Bar(
+        x=['Average Length', 'Unique Token Ratio'],
+        y=[results.avg_length, results.unique_ratio*100],
+        text=[f"{results.avg_length:.1f}", f"{results.unique_ratio:.2%}"],
+        textposition='auto',
+    ))
+    fig_stats.update_layout(
+        title="Generation Statistics",
+        height=400, width=600,
+        showlegend=False
+    )
+    figures.append(fig_stats)
     
-    # # 2. Stopping Reasons
-    # if results['stopping_reasons']:
-    #     fig_stops = go.Figure(data=[go.Pie(
-    #         labels=list(results['stopping_reasons'].keys()),
-    #         values=list(results['stopping_reasons'].values()),
-    #         textinfo='label+percent'
-    #     )])
-    #     fig_stops.update_layout(
-    #         title="Early Stopping Distribution",
-    #         height=400, width=600
-    #     )
-    #     figures.append(fig_stops)
+    # 2. Stopping Reasons
+    if results.stopping_reasons:
+        fig_stops = go.Figure(data=[go.Pie(
+            labels=list(results.stopping_reasons.keys()),
+            values=list(results.stopping_reasons.values()),
+            textinfo='label+percent'
+        )])
+        fig_stops.update_layout(
+            title="Early Stopping Distribution",
+            height=400, width=600
+        )
+        figures.append(fig_stops)
     
     # 3. Sample Generations Table
-    if results['all_texts']:
+    if results.all_texts:
         fig_samples = go.Figure(data=[go.Table(
             header=dict(values=['Sample', 'Stopping Reason']),
             cells=dict(values=[
-                results['all_texts'],
-                [results['stopping_reasons'].most_common()[0][0]] * len(results['all_texts'])
+                results.all_texts,
+                [results.stopping_reasons.most_common()[0][0]] * len(results.all_texts)
             ])
         )])
         fig_samples.update_layout(
@@ -94,14 +99,21 @@ def plot_attention_patterns(internals: List[ModelInternals]) -> List[go.Figure]:
 
 def plot_mlp_activations(internals: List[ModelInternals]) -> List[go.Figure]:
     """Plot MLP activation patterns for layer 10 (SAE layer)."""
-    step_acts_original = []
-    step_acts_encoded = []
-    step_labels = []
+    # Stack activations across steps
+    original_acts = rearrange([
+        internal.mlp[10]['pre_activation'][:, -1]
+        for internal in internals
+    ], 'step b d -> step d')
     
-    for step, internal in enumerate(internals):
-        step_acts_original.append(internal.mlp[10]['pre_activation'].cpu().numpy()[0, -1])
-        step_acts_encoded.append(internal.mlp[10]['sae_encoded'].cpu().numpy()[0, -1])
-        step_labels.append(f"Step {step}: {internal.token_text}")
+    encoded_acts = rearrange([
+        internal.mlp[10]['sae_encoded'][:, -1]
+        for internal in internals
+    ], 'step b d -> step d')
+    
+    step_labels = [
+        f"Step {step}: {internal.token_text}"
+        for step, internal in enumerate(internals)
+    ]
     
     fig = make_subplots(
         rows=2, cols=1,
@@ -111,7 +123,7 @@ def plot_mlp_activations(internals: List[ModelInternals]) -> List[go.Figure]:
     
     fig.add_trace(
         go.Heatmap(
-            z=np.array(step_acts_original),
+            z=original_acts.cpu().numpy(),
             y=step_labels,
             colorscale='RdBu',
             showscale=True,
@@ -122,7 +134,7 @@ def plot_mlp_activations(internals: List[ModelInternals]) -> List[go.Figure]:
     
     fig.add_trace(
         go.Heatmap(
-            z=np.array(step_acts_encoded),
+            z=encoded_acts.cpu().numpy(),
             y=step_labels,
             colorscale='RdBu',
             showscale=True,

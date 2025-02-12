@@ -32,18 +32,26 @@ def setup_model_and_sae(device: str = None) -> ModelState:
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Load model with optimizations but without compilation
+    # Load model with better precision handling
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map={"": device},
-        torch_dtype=torch.float16,  # Use half precision for 6GB VRAM
+        torch_dtype=torch.bfloat16,  # More stable than float16
         low_cpu_mem_usage=True,
-        max_memory={0: "5GB"},  # Reserve some VRAM for other operations
-        use_flash_attention_2=False,  # RTX 2060 doesn't support it
+        # Remove tight memory constraint
+        use_flash_attention_2=False,
     ).to(device)
     
-    # Move SAE to half precision for consistency
-    sae = sae.to(torch.float16)
+    # Move SAE to bfloat16 for consistency
+    sae = sae.to(torch.bfloat16)
+    
+    # Verify model outputs before returning
+    model.eval()
+    with torch.inference_mode():
+        test_input = tokenizer("Test input", return_tensors="pt").to(device)
+        test_output = model(**test_input)
+        if torch.isnan(test_output.logits).any():
+            raise RuntimeError("Model producing NaN outputs on test input")
     
     return ModelState(
         model=model,

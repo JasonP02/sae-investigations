@@ -13,7 +13,6 @@ import traceback
 from config import GenerationConfig
 from models import ModelState, ExperimentResults
 from generation import generate_text
-from visualization import visualize_generation_activations
 from setup import setup_model_and_sae
 
 def run_multiple_experiments(
@@ -44,19 +43,34 @@ def run_multiple_experiments(
     all_tokens = []
     stopping_reasons = Counter()
     generation_lengths = []
-    all_generation_internals = [] 
-        
+    
+    results = ExperimentResults(
+        model_state=model_state,
+        config=config or GenerationConfig(),
+        prompt=prompt,
+        all_texts=[],
+        stopping_reasons=Counter(),
+        token_frequencies=Counter(),
+        avg_length=0,
+        unique_ratio=0
+    )
+
     # Run experiments
     for i in range(num_runs):
         try:
             with torch.no_grad():
+                print(f"Running experiment {i+1} of {num_runs}")
                 generation_internals, gen_texts, tokens, stopping_reason = generate_text(
                     model=model_state.model,
                     tokenizer=model_state.tokenizer,
                     sae=model_state.sae,
                     input_text=prompt,
+                    results=results,
+                    run_idx=i,
                     config=config
                 )
+                
+                results.save_internals(i, generation_internals)
                 
                 if stopping_reason:
                     stopping_reasons[stopping_reason] += 1
@@ -65,7 +79,6 @@ def run_multiple_experiments(
                 all_texts.append(final_text)
                 all_tokens.extend(model_state.tokenizer.encode(final_text))
                 generation_lengths.append(len(final_text.split()))
-                all_generation_internals.append(generation_internals)
                 
                 del generation_internals, gen_texts, tokens
                 torch.cuda.empty_cache()
@@ -96,14 +109,11 @@ def run_multiple_experiments(
         for token_id, count in token_frequencies.most_common(20)
     })
     
-    return ExperimentResults(
-        model_state=model_state,
-        config=config or GenerationConfig(),
-        prompt=prompt,
-        all_texts=all_texts,
-        stopping_reasons=stopping_reasons,
-        token_frequencies=token_frequencies_text,
-        avg_length=avg_length,
-        unique_ratio=unique_ratio,
-        generation_internals=all_generation_internals,
-    ) 
+    results.token_frequencies = token_frequencies_text
+    results.avg_length = avg_length
+    results.unique_ratio = unique_ratio
+    results.all_texts = all_texts
+    results.stopping_reasons = stopping_reasons
+    results.generation_lengths = generation_lengths
+    
+    return results 

@@ -1,0 +1,21 @@
+{
+  "prompt": "You are an AI that solves problems step-by-step with detailed reasoning. Break the problem down into chunks that you can solve. \nVerify the correctness of these chunks before moving on. Always explain your thought process before providing the final answer. Solve your problem in the present tense. This is NOT a multiple choice question. If numbers are not provided, they are not needed.\nQuestion: If a ball is thrown by a person at a wall that is 10 feet away, what will happen to the ball within 5 seconds of the throw? \nAnswer:",
+  "config": {
+    "num_runs": 5,
+    "max_new_tokens": 100,
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "do_sample": true,
+    "min_confidence": 0.1,
+    "repetition_window": 50,
+    "max_repetition_ratio": 0.5,
+    "ngram_size": 6,
+    "max_ngram_repeats": 1,
+    "min_unique_ratio": 0.15,
+    "semantic_similarity_threshold": 0.85,
+    "max_consecutive_fillers": 10,
+    "max_recent_phrases": 10,
+    "phrase_context_window": 30,
+    "pad_token_id": null,
+    "eos_token_id": null,
+    "save_layers": 

@@ -3,12 +3,17 @@ Model state and experiment result containers.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from collections import Counter
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sparsify import Sae # type: ignore
 from config import GenerationConfig
 import torch
+import numpy as np
+import time
+from datetime import datetime
+import os
+import json
 
 @dataclass
 class ModelState:
@@ -35,78 +40,12 @@ class ModelState:
         """Returns model components as a tuple for easy unpacking."""
         return self.model, self.tokenizer, self.sae
 
-@dataclass
-class ExperimentResults:
-    """
-    Container for experiment results and analysis.
-    
-    Attributes:
-        model_state: The model state used for the experiment
-        config: The generation configuration used
-        prompt: The input prompt used
-        all_texts: List of all generated texts
-        stopping_reasons: Counter of early stopping reasons
-        token_frequencies: Counter of most common tokens
-        avg_length: Average length of generations
-        unique_ratio: Average ratio of unique tokens
-        generation_internals: List of ModelInternals for each run
-        metadata: Additional experiment metadata
-    """
-    model_state: ModelState
-    config: GenerationConfig
-    prompt: str
-    all_texts: List[str]
-    stopping_reasons: Counter
-    token_frequencies: Counter
-    avg_length: float
-    unique_ratio: float
-    generation_internals: Optional[List[List[ModelInternals]]] = None  # List[runs][steps]
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert results to a dictionary format for visualization."""
-        return {
-            'all_texts': self.all_texts,
-            'stopping_reasons': self.stopping_reasons,
-            'token_frequencies': self.token_frequencies,
-            'avg_length': self.avg_length,
-            'unique_ratio': self.unique_ratio,
-            'generation_internals': [
-                [step.to_numpy() for step in run] 
-                for run in (self.generation_internals or [])
-            ],
-            'metadata': {
-                'model_name': self.model_state.model_name,
-                'sae_name': self.model_state.sae_name,
-                'prompt': self.prompt,
-                **self.metadata
-            }
-        }
 
 @dataclass
 class ModelInternals:
-    """Container for model's internal states during generation.
-    
-    Attributes:
-        hidden_states: List of tensors [batch, seq_len, hidden_dim] for each layer
-        attention: Dict containing attention patterns for each layer
-            - scores: Raw attention scores
-            - patterns: Softmaxed attention weights
-            - values: Value vectors
-            - keys: Key vectors
-            - queries: Query vectors
-        mlp: Dict containing MLP internals for each layer
-            - pre_activation: Input to MLP
-            - post_activation: Output after activation
-            - sae_encoded: SAE encoded version (only for layer 10)
-        residual: Residual stream values at each layer
-        token: The generated token at this step
-        token_text: The text representation of the token
-        logits: Raw logits for token prediction
-        probs: Softmaxed probabilities
-    """
+    """Container for model's internal states during generation."""
     hidden_states: List[torch.Tensor]
-    attention: Dict[int, Dict[str, torch.Tensor]]
+    attention: Dict[int, torch.Tensor]
     mlp: Dict[int, Dict[str, torch.Tensor]]
     residual: List[torch.Tensor]
     token: int
@@ -114,21 +53,74 @@ class ModelInternals:
     logits: torch.Tensor
     probs: torch.Tensor
     
-    def to_numpy(self) -> Dict[str, Any]:
-        """Convert tensors to numpy arrays for visualization."""
+    def to_numpy(self, save_layers: Set[int] = None) -> Dict[str, Any]:
+        """Convert tensors to numpy arrays efficiently."""
+        if save_layers is None:
+            save_layers = {10}
+            
+        def safe_convert(t: torch.Tensor) -> np.ndarray:
+            return t.detach().cpu().to(torch.float32).numpy()
+        
+        # Save layer 10 data including attention patterns and residual stream
         return {
-            'hidden_states': [h.detach().cpu().numpy() for h in self.hidden_states],
-            'attention': {
-                layer: {k: v.detach().cpu().numpy() 
-                       for k, v in layer_data.items()}
-                for layer, layer_data in self.attention.items()
-            },
-            'mlp': {
-                layer: {k: v.detach().cpu().numpy() 
-                       for k, v in layer_data.items()}
-                for layer, layer_data in self.mlp.items()
-            },
-            'residual': [r.detach().cpu().numpy() for r in self.residual],
-            'logits': self.logits.detach().cpu().numpy(),
-            'probs': self.probs.detach().cpu().numpy()
-        } 
+            'layer_10': {  # Wrap in layer_10 key
+                'mlp_pre': safe_convert(self.mlp[10]['pre_activation']),
+                'mlp_post': safe_convert(self.mlp[10]['post_activation']),
+                'hidden': safe_convert(self.hidden_states[10]),
+                'attention': safe_convert(self.attention[10]),
+                'residual': safe_convert(self.residual[10]),
+                'logits': safe_convert(self.logits),
+                'probs': safe_convert(self.probs),
+                'token': self.token,
+                'token_text': self.token_text
+            }
+        }
+
+@dataclass
+class ExperimentResults:
+    """Container for experiment results and analysis."""
+    model_state: ModelState
+    config: GenerationConfig
+    prompt: str
+    all_texts: List[str] = field(default_factory=list)
+    stopping_reasons: Counter = field(default_factory=Counter)
+    token_frequencies: Counter = field(default_factory=Counter)
+    avg_length: float = 0.0
+    unique_ratio: float = 0.0
+    
+    def __post_init__(self):
+        """Setup experiment directory structure."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.experiment_id = timestamp
+        self.experiment_path = f"experiments/{timestamp}"
+        
+        # Create directory structure
+        for subdir in ['metadata', 'runs', 'stats']:
+            os.makedirs(f"{self.experiment_path}/{subdir}", exist_ok=True)
+            
+        # Save experiment metadata
+        self._save_metadata()
+    
+    def _save_metadata(self):
+        """Save experiment configuration and metadata."""
+        metadata = {
+            'timestamp': self.experiment_id,
+            'model': self.model_state.model_name,
+            'sae': self.model_state.sae_name,
+            'prompt': self.prompt,
+            'config': self.config.to_dict()
+        }
+        
+        with open(f"{self.experiment_path}/metadata/config.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+    
+    def save_step_internals(self, run_idx: int, step_idx: int, internals: Dict):
+        """Save step data efficiently."""
+        run_dir = f"{self.experiment_path}/runs/run_{run_idx:03d}"
+        os.makedirs(run_dir, exist_ok=True)
+        
+        # Save as compressed numpy
+        np.savez_compressed(
+            f"{run_dir}/step_{step_idx:04d}.npz",
+            **internals['layer_10']  # Only save layer 10 data
+        )
