@@ -1,4 +1,4 @@
-# %%
+# %% Imports
 %load_ext autoreload
 %autoreload 2
 
@@ -12,7 +12,7 @@ import gc
 from tqdm import tqdm
 import numpy as np
 
-# %%
+# %% Model and SAE setup
 import os
 os.environ['TORCH_USE_CUDA_DSA']='1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -25,29 +25,33 @@ if torch.cuda.is_available():
     torch.cuda.empty_cache()
     gc.collect()
 
-# %%
+# %% Clear experiment files
 from models import ExperimentResults 
 
 clear = True
 if clear:
     ExperimentResults.clear_all_experiment_files()
 
-# %%
+# %% Prompt and configuration
 prompt = \
 """"
-"You are an AI that solves problems step-by-step with detailed reasoning. 
-Always explain your thought process using phrases like (so, I said; wait, let me think; etc).
-Some other minor information: This is NOT a multiple choice question. If numbers are not provided, they are not needed. Good luck!
+"You are an AI that solves problems using detailed reasoning. 
+You should try to evaluate your thought process as you go along, 
+and revise it if there are inconsistencies using phrases like (so, I said; wait, let me think; etc).
+This is NOT a multiple choice question. If numbers are not provided, they are not needed.
 Question: If a ball is thrown by a person at a wall that is relatively close, what will happen to the ball shortly after the throw? 
 Answer:
 """
 
 # Configuration based on store_mode
 store_mode = "off"
+max_new_tokens = 250
+num_runs = 3
+
 config = GenerationConfig(
     store_mode=store_mode,
-    num_runs=1 if store_mode in ["memory"] else 1,
-    max_new_tokens=100 if store_mode in ["off", "memory"] else 100,
+    num_runs=1 if store_mode in ["memory"] else num_runs,
+    # max_new_tokens=100 if store_mode in ["off", "memory"] else max_new_tokens,
     save_every_n_steps=1 if store_mode == "disk" else None
 )
 

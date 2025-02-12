@@ -85,7 +85,7 @@ class GenerationConfig:
     semantic_similarity_threshold: float = 0.95
     max_consecutive_fillers: int = 15
     max_recent_phrases: int = 5
-    phrase_context_window: int = 50
+    phrase_context_window: int = 15
     
     # Special Tokens
     pad_token_id: Optional[int] = None
