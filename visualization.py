@@ -1,11 +1,35 @@
 """Visualization utilities for SAE analysis experiments."""
 
 from typing import List, Dict, Union
+from collections import Counter
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from models import ExperimentResults, ModelInternals
 from einops import rearrange
+
+def calculate_statistics(results: ExperimentResults) -> None:
+    """Calculate visualization statistics from raw experiment data.
+    
+    Args:
+        results: ExperimentResults containing raw generation data
+    """
+    # Calculate token frequencies
+    token_frequencies = Counter(results.all_tokens)
+    
+    # Calculate average length
+    results.avg_length = sum(results.generation_lengths) / len(results.generation_lengths)
+    
+    # Calculate unique token ratio
+    unique_tokens = len(set(results.all_tokens))
+    total_tokens = len(results.all_tokens)
+    results.unique_ratio = unique_tokens / total_tokens if total_tokens > 0 else 0
+    
+    # Map token IDs to text for readability
+    results.token_frequencies = Counter({
+        results.model_state.tokenizer.decode([token_id]): count 
+        for token_id, count in token_frequencies.most_common(20)
+    })
 
 def visualize_experiment_results(results: ExperimentResults) -> List[go.Figure]:
     """Create visualizations for experiment-level results.
@@ -16,6 +40,9 @@ def visualize_experiment_results(results: ExperimentResults) -> List[go.Figure]:
     Returns:
         List of plotly figures showing experiment statistics
     """
+    # Calculate statistics first
+    calculate_statistics(results)
+    
     figures = []
     
     # 1. Generation Statistics

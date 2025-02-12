@@ -87,6 +87,8 @@ class ExperimentResults:
     config: GenerationConfig
     prompt: str
     all_texts: List[str] = field(default_factory=list)
+    all_tokens: List[int] = field(default_factory=list)
+    generation_lengths: List[int] = field(default_factory=list)
     stopping_reasons: Counter = field(default_factory=Counter)
     token_frequencies: Counter = field(default_factory=Counter)
     avg_length: float = 0.0
