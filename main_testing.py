@@ -44,9 +44,9 @@ Answer:
 
 # Example usage
 config = GenerationConfig(
-    store_mode="memory",  # or "disk"
-    num_runs=1,  # We'll set this based on store_mode after creation
-    max_new_tokens=200,
+    store_mode="off",  # or "disk"
+    num_runs=15,  # We'll set this based on store_mode after creation
+    max_new_tokens=20,
     save_every_n_steps=1  # Save every step in disk mode
 )
 

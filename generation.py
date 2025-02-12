@@ -200,7 +200,7 @@ def generate_text(
                     probs=torch.nn.functional.softmax(outputs.logits[:,-1:,:], dim=-1)
                 )
 
-                # Convert to numpy and save if it's a save step
+                # Handle different storage modes
                 if config.store_mode == "memory":
                     generation_internals.append(step_internals)
                 elif config.store_mode == "disk":
@@ -208,9 +208,10 @@ def generate_text(
                         numpy_internals = step_internals.to_numpy()
                         results.save_step_internals(run_idx=run_idx, step_idx=step, internals=numpy_internals)
                         logger.debug(f"Saved model state at step {step}")
+                # For "off" mode, we don't store anything
 
-                # Clear CUDA memory if in disk mode
-                if config.store_mode == "disk":
+                # Clear CUDA memory for disk and off modes
+                if config.store_mode in ["disk", "off"]:
                     del step_internals
                     torch.cuda.empty_cache()
                 

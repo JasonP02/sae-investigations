@@ -63,7 +63,7 @@ class GenerationConfig:
             log_frequency (int): Log progress every n steps (default: 10)
             save_every_n_steps (int): Save model states every n steps (default: 100)
         Analysis Mode:
-            store_mode (str): Storage mode for results ("disk" or "memory")
+            store_mode (str): Storage mode for results ("disk", "memory", or "off")
     """
     
     # Generation Control
@@ -101,7 +101,7 @@ class GenerationConfig:
     save_every_n_steps: int = 200
     
     # Analysis Mode
-    store_mode: str = "disk"  # Options: "disk" or "memory"
+    store_mode: str = "disk"  # Options: "disk", "memory", or "off"
 
     def __post_init__(self):
         """Initialize default values for complex types after instance creation."""
