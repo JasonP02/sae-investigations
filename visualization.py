@@ -1,6 +1,12 @@
-"""Visualization utilities for SAE analysis experiments."""
+"""Visualization utilities for SAE analysis experiments.
 
-from typing import List, Dict, Union
+This module provides visualization tools for analyzing Sparse Autoencoder (SAE)
+experiments. It includes:
+1. Generation statistics visualization (token frequencies, lengths, etc.)
+2. Model internals visualization (attention, MLP activations, residual stream)
+"""
+
+from typing import List, Dict, Union, Optional
 from collections import Counter
 import numpy as np
 import plotly.graph_objects as go
@@ -8,176 +14,223 @@ from plotly.subplots import make_subplots
 from models import ExperimentResults, ModelInternals
 from einops import rearrange
 
-def calculate_statistics(results: ExperimentResults) -> None:
-    """Calculate visualization statistics from raw experiment data.
+class StatisticsVisualizer:
+    """Handles calculation and visualization of generation statistics."""
     
-    Args:
-        results: ExperimentResults containing raw generation data
-    """
-    # Calculate token frequencies
-    token_frequencies = Counter(results.all_tokens)
+    def __init__(self, results: ExperimentResults):
+        self.results = results
+        self._calculate_statistics()
     
-    # Calculate average length
-    results.avg_length = sum(results.generation_lengths) / len(results.generation_lengths)
-    
-    # Calculate unique token ratio
-    unique_tokens = len(set(results.all_tokens))
-    total_tokens = len(results.all_tokens)
-    results.unique_ratio = unique_tokens / total_tokens if total_tokens > 0 else 0
-    
-    # Map token IDs to text for readability
-    results.token_frequencies = Counter({
-        results.model_state.tokenizer.decode([token_id]): count 
-        for token_id, count in token_frequencies.most_common(20)
-    })
-
-def visualize_experiment_results(results: ExperimentResults) -> List[go.Figure]:
-    """Create visualizations for experiment-level results.
-    
-    Args:
-        results: ExperimentResults containing experiment data
+    def _calculate_statistics(self) -> None:
+        """Calculate basic statistics from generation results."""
+        # Token frequencies
+        token_frequencies = Counter(self.results.all_tokens)
         
-    Returns:
-        List of plotly figures showing experiment statistics
-    """
-    # Calculate statistics first
-    calculate_statistics(results)
+        # Average length
+        self.results.avg_length = np.mean(self.results.generation_lengths)
+        
+        # Unique token ratio
+        unique_tokens = len(set(self.results.all_tokens))
+        total_tokens = len(self.results.all_tokens)
+        self.results.unique_ratio = unique_tokens / total_tokens if total_tokens > 0 else 0
+        
+        # Map token IDs to text
+        self.results.token_frequencies = Counter({
+            self.results.model_state.tokenizer.decode([token_id]): count 
+            for token_id, count in token_frequencies.most_common(20)
+        })
     
-    figures = []
+    def plot_basic_stats(self) -> go.Figure:
+        """Create basic statistics visualization."""
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=['Average Length', 'Unique Token Ratio'],
+            y=[self.results.avg_length, self.results.unique_ratio*100],
+            text=[f"{self.results.avg_length:.1f}", f"{self.results.unique_ratio:.2%}"],
+            textposition='auto',
+        ))
+        fig.update_layout(
+            title="Generation Statistics",
+            height=400, width=600,
+            showlegend=False
+        )
+        return fig
     
-    # 1. Generation Statistics
-    fig_stats = go.Figure()
-    fig_stats.add_trace(go.Bar(
-        x=['Average Length', 'Unique Token Ratio'],
-        y=[results.avg_length, results.unique_ratio*100],
-        text=[f"{results.avg_length:.1f}", f"{results.unique_ratio:.2%}"],
-        textposition='auto',
-    ))
-    fig_stats.update_layout(
-        title="Generation Statistics",
-        height=400, width=600,
-        showlegend=False
-    )
-    figures.append(fig_stats)
-    
-    # 2. Stopping Reasons
-    if results.stopping_reasons:
-        fig_stops = go.Figure(data=[go.Pie(
-            labels=list(results.stopping_reasons.keys()),
-            values=list(results.stopping_reasons.values()),
+    def plot_stopping_distribution(self) -> Optional[go.Figure]:
+        """Create stopping reasons distribution visualization."""
+        if not self.results.stopping_reasons:
+            return None
+            
+        fig = go.Figure(data=[go.Pie(
+            labels=list(self.results.stopping_reasons.keys()),
+            values=list(self.results.stopping_reasons.values()),
             textinfo='label+percent'
         )])
-        fig_stops.update_layout(
+        fig.update_layout(
             title="Early Stopping Distribution",
             height=400, width=600
         )
-        figures.append(fig_stops)
+        return fig
     
-    # 3. Sample Generations Table
-    if results.all_texts:
-        fig_samples = go.Figure(data=[go.Table(
+    def create_samples_table(self) -> Optional[go.Figure]:
+        """Create table of sample generations."""
+        if not self.results.all_texts:
+            return None
+            
+        fig = go.Figure(data=[go.Table(
             header=dict(values=['Sample', 'Stopping Reason']),
             cells=dict(values=[
-                results.all_texts,
-                [results.stopping_reasons.most_common()[0][0]] * len(results.all_texts)
+                self.results.all_texts,
+                [self.results.stopping_reasons.most_common()[0][0]] * len(self.results.all_texts)
             ])
         )])
-        fig_samples.update_layout(
+        fig.update_layout(
             title="Sample Generations",
             height=400, width=800
         )
-        figures.append(fig_samples)
-    
-    for fig in figures:
-        fig.show()
+        return fig
 
-def plot_attention_patterns(internals: List[ModelInternals]) -> List[go.Figure]:
-    """Plot attention patterns across layers and heads."""
-    figures = []
-    for layer in range(len(internals[0].attention)):
-        patterns = np.stack([
-            step.attention[layer]['patterns'][0].numpy()
-            for step in internals
-        ])
+class ModelInternalsVisualizer:
+    """Handles visualization of model's internal states."""
+    
+    def __init__(self, internals: List[ModelInternals]):
+        self.internals = internals
+    
+    def plot_attention_patterns(self) -> List[go.Figure]:
+        """Plot attention patterns across layers and heads."""
+        figures = []
+        for layer in range(len(self.internals[0].attention)):
+            patterns = np.stack([
+                step.attention[layer].cpu().numpy()
+                for step in self.internals
+            ])
+            
+            fig = make_subplots(
+                rows=2, cols=4,  # 8 attention heads
+                subplot_titles=[f"Head {i}" for i in range(8)],
+                vertical_spacing=0.1
+            )
+            
+            for head in range(8):
+                fig.add_trace(
+                    go.Heatmap(
+                        z=patterns[:,:,head],
+                        colorscale='RdBu',
+                        showscale=head==0
+                    ),
+                    row=(head//4)+1, col=(head%4)+1
+                )
+            
+            fig.update_layout(
+                title=f"Layer {layer} Attention Patterns",
+                height=800, width=1200
+            )
+            figures.append(fig)
+        
+        return figures
+    
+    def plot_mlp_activations(self) -> List[go.Figure]:
+        """Plot MLP activation patterns for layer 10 (SAE layer)."""
+        # Stack activations across steps
+        original_acts = rearrange([
+            internal.mlp[10]['pre_activation'][:, -1].cpu()
+            for internal in self.internals
+        ], 'step b d -> step d')
+        
+        encoded_acts = rearrange([
+            internal.mlp[10]['sae_encoded'][:, -1].cpu()
+            for internal in self.internals
+        ], 'step b d -> step d')
+        
+        step_labels = [
+            f"Step {step}: {internal.token_text}"
+            for step, internal in enumerate(self.internals)
+        ]
         
         fig = make_subplots(
-            rows=2, cols=4,  # 8 attention heads
-            subplot_titles=[f"Head {i}" for i in range(8)],
-            vertical_spacing=0.1
+            rows=2, cols=1,
+            subplot_titles=('Original MLP', 'SAE-Encoded'),
+            vertical_spacing=0.15
         )
         
-        for head in range(8):
-            fig.add_trace(
-                go.Heatmap(
-                    z=patterns[:,:,head],
-                    colorscale='RdBu',
-                    showscale=head==0
-                ),
-                row=(head//4)+1, col=(head%4)+1
-            )
+        fig.add_trace(
+            go.Heatmap(
+                z=original_acts.numpy(),
+                y=step_labels,
+                colorscale='RdBu',
+                showscale=True,
+                name='Original'
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Heatmap(
+                z=encoded_acts.numpy(),
+                y=step_labels,
+                colorscale='RdBu',
+                showscale=True,
+                name='SAE-Encoded'
+            ),
+            row=2, col=1
+        )
         
         fig.update_layout(
-            title=f"Layer {layer} Attention Patterns",
-            height=800, width=1200
+            title="Layer 10 MLP Activation Patterns",
+            height=800, width=1000
         )
-        figures.append(fig)
+        
+        return [fig]
     
-    return figures
+    def plot_residual_stream(self) -> List[go.Figure]:
+        """Plot residual stream evolution."""
+        # TODO: Implement residual stream visualization
+        # This is a placeholder for future implementation
+        return []
 
-def plot_mlp_activations(internals: List[ModelInternals]) -> List[go.Figure]:
-    """Plot MLP activation patterns for layer 10 (SAE layer)."""
-    # Stack activations across steps
-    original_acts = rearrange([
-        internal.mlp[10]['pre_activation'][:, -1]
-        for internal in internals
-    ], 'step b d -> step d')
+def visualize_experiment_results(results: ExperimentResults) -> None:
+    """Create and display all visualizations for experiment results.
     
-    encoded_acts = rearrange([
-        internal.mlp[10]['sae_encoded'][:, -1]
-        for internal in internals
-    ], 'step b d -> step d')
+    Args:
+        results: ExperimentResults containing experiment data
+    """
+    # Initialize visualizers
+    stats_viz = StatisticsVisualizer(results)
     
-    step_labels = [
-        f"Step {step}: {internal.token_text}"
-        for step, internal in enumerate(internals)
-    ]
+    # Create and show statistics visualizations
+    figures = []
     
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=('Original MLP', 'SAE-Encoded'),
-        vertical_spacing=0.15
-    )
+    # Basic statistics
+    basic_stats = stats_viz.plot_basic_stats()
+    if basic_stats:
+        figures.append(basic_stats)
     
-    fig.add_trace(
-        go.Heatmap(
-            z=original_acts.cpu().numpy(),
-            y=step_labels,
-            colorscale='RdBu',
-            showscale=True,
-            name='Original'
-        ),
-        row=1, col=1
-    )
+    # Stopping distribution
+    stopping_dist = stats_viz.plot_stopping_distribution()
+    if stopping_dist:
+        figures.append(stopping_dist)
     
-    fig.add_trace(
-        go.Heatmap(
-            z=encoded_acts.cpu().numpy(),
-            y=step_labels,
-            colorscale='RdBu',
-            showscale=True,
-            name='SAE-Encoded'
-        ),
-        row=2, col=1
-    )
+    # Samples table
+    samples_table = stats_viz.create_samples_table()
+    if samples_table:
+        figures.append(samples_table)
     
-    fig.update_layout(
-        title="Layer 10 MLP Activation Patterns",
-        height=800, width=1000
-    )
+    # Show all figures
+    for fig in figures:
+        fig.show()
     
-    return [fig]
-
-def plot_residual_stream(internals: List[ModelInternals]) -> List[go.Figure]:
-    """Plot residual stream evolution."""
-    # TODO: Implement residual stream visualization
-    return []
+    # If we have internals data, show detailed visualizations
+    if results.generation_internals:
+        internals_viz = ModelInternalsVisualizer(results.generation_internals[0])
+        
+        # Attention patterns
+        for fig in internals_viz.plot_attention_patterns():
+            fig.show()
+        
+        # MLP activations
+        for fig in internals_viz.plot_mlp_activations():
+            fig.show()
+        
+        # Residual stream (when implemented)
+        for fig in internals_viz.plot_residual_stream():
+            fig.show()

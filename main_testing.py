@@ -42,16 +42,14 @@ Question: If a ball is thrown by a person at a wall that is relatively close, wh
 Answer:
 """
 
-# Example usage
+# Configuration based on store_mode
+store_mode = "off"
 config = GenerationConfig(
-    store_mode="off",  # or "disk"
-    num_runs=15,  # We'll set this based on store_mode after creation
-    max_new_tokens=20,
-    save_every_n_steps=1  # Save every step in disk mode
+    store_mode=store_mode,
+    num_runs=1 if store_mode in ["memory"] else 1,
+    max_new_tokens=100 if store_mode in ["off", "memory"] else 100,
+    save_every_n_steps=1 if store_mode == "disk" else None
 )
-
-# Update num_runs based on store_mode
-config.num_runs = 1 if config.store_mode=="memory" else 5
 
 results = run_multiple_experiments(
     prompt=prompt,
@@ -60,12 +58,12 @@ results = run_multiple_experiments(
     config=config
 )
 
-# Access results
+# Access internals (if applicable)
 if config.store_mode == "memory":
     # Access all internals directly
     run0_internals = results.generation_internals[0]  # First run
     step0_internals = run0_internals[0]  # First step
-else:
+elif config.store_mode == "disk":
     # Load from disk as needed
     numpy_data = np.load(f"{results.experiment_path}/runs/run_000/step_0000.npz")
 

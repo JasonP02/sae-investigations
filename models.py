@@ -113,14 +113,15 @@ class ExperimentResults:
     
     def __post_init__(self):
         """Setup experiment directory structure."""
-        self.experiment_path = f"experiments/{self.experiment_id}"
-        
-        # Create directory structure
-        for subdir in ['metadata', 'runs', 'stats']:
-            os.makedirs(f"{self.experiment_path}/{subdir}", exist_ok=True)
+        if self.config and self.config.store_mode != "off":
+            self.experiment_path = f"experiments/{self.experiment_id}"
             
-        # Save experiment metadata
-        self._save_metadata()
+            # Create directory structure
+            for subdir in ['metadata', 'runs', 'stats']:
+                os.makedirs(f"{self.experiment_path}/{subdir}", exist_ok=True)
+            
+            # Save experiment metadata
+            self._save_metadata()
     
     def clear_experiment_files(self):
         """Clear all files in the experiment directory."""
