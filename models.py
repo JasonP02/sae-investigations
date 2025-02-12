@@ -14,6 +14,10 @@ import time
 from datetime import datetime
 import os
 import json
+import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ModelState:
@@ -88,6 +92,23 @@ class ExperimentResults:
     avg_length: float = 0.0
     unique_ratio: float = 0.0
     
+    @classmethod
+    def clear_all_experiment_files(cls):
+        """Clear all files in the experiments directory."""
+        experiments_dir = "experiments"
+        if os.path.exists(experiments_dir):
+            logger.info(f"Clearing all experiment files in {experiments_dir}")
+            try:
+                shutil.rmtree(experiments_dir)
+                os.makedirs(experiments_dir)  # Recreate empty directory
+                logger.info("Successfully cleared all experiment files")
+            except Exception as e:
+                logger.error(f"Error clearing experiment files: {str(e)}")
+                raise
+        else:
+            logger.warning(f"Experiments directory {experiments_dir} does not exist")
+            os.makedirs(experiments_dir)  # Create it if it doesn't exist
+    
     def __post_init__(self):
         """Setup experiment directory structure."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -100,6 +121,23 @@ class ExperimentResults:
             
         # Save experiment metadata
         self._save_metadata()
+    
+    def clear_experiment_files(self):
+        """Clear all files in the experiment directory."""
+        if os.path.exists(self.experiment_path):
+            logger.info(f"Clearing experiment files in {self.experiment_path}")
+            try:
+                shutil.rmtree(self.experiment_path)
+                os.makedirs(self.experiment_path)  # Recreate empty directory
+                # Recreate subdirectories
+                for subdir in ['metadata', 'runs', 'stats']:
+                    os.makedirs(f"{self.experiment_path}/{subdir}", exist_ok=True)
+                logger.info("Successfully cleared experiment files")
+            except Exception as e:
+                logger.error(f"Error clearing experiment files: {str(e)}")
+                raise
+        else:
+            logger.warning(f"Experiment path {self.experiment_path} does not exist")
     
     def _save_metadata(self):
         """Save experiment configuration and metadata."""

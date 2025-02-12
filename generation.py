@@ -200,9 +200,11 @@ def generate_text(
                     probs=torch.nn.functional.softmax(outputs.logits[:,-1:,:], dim=-1)
                 )
 
-                # Convert to numpy and save immediately
-                numpy_internals = step_internals.to_numpy()
-                results.save_step_internals(run_idx=run_idx, step_idx=step, internals=numpy_internals)
+                # Convert to numpy and save if it's a save step
+                if step % config.save_every_n_steps == 0:
+                    numpy_internals = step_internals.to_numpy()
+                    results.save_step_internals(run_idx=run_idx, step_idx=step, internals=numpy_internals)
+                    logger.debug(f"Saved model state at step {step}")
 
                 # Clear CUDA memory
                 del step_internals

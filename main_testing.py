@@ -6,11 +6,13 @@ from config import GenerationConfig
 from setup import setup_model_and_sae
 from experiment import run_multiple_experiments
 from visualization import visualize_experiment_results
+from models import ExperimentResults 
 import torch
 import gc
 from tqdm import tqdm
 
 # %%
+import os
 os.environ['TORCH_USE_CUDA_DSA']='1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -21,6 +23,13 @@ model_state = setup_model_and_sae()
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
     gc.collect()
+
+# %%
+from models import ExperimentResults 
+
+clear = False
+if clear:
+    ExperimentResults.clear_all_experiment_files()
 
 # %%
 prompt = "You are an AI that solves problems step-by-step with detailed reasoning. Break the problem down into chunks that you can solve. \
@@ -68,3 +77,4 @@ gc.collect()
 # And I think there is some stuff missing... most of the outputs are not that useful.
 
 
+#%%
