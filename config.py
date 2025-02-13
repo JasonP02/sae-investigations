@@ -79,7 +79,7 @@ class GenerationConfig:
     max_repetition_ratio: float = 0.7
     ngram_size: int = 4
     max_ngram_repeats: int = 2
-    min_unique_ratio: float = 0.1
+    min_unique_ratio: float = 0.05
     
     # Semantic Control
     semantic_similarity_threshold: float = 0.95
