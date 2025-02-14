@@ -1,10 +1,2 @@
-2025-02-11 22:23:57,341 - INFO - Clearing all experiment files in experiments
-2025-02-11 22:23:57,347 - INFO - Successfully cleared all experiment files
-2025-02-12 11:07:37,034 - INFO - Clearing all experiment files in experiments
-2025-02-12 11:07:37,047 - INFO - Successfully cleared all experiment files
-2025-02-12 11:09:58,093 - INFO - Clearing all experiment files in experiments
-2025-02-12 11:09:58,097 - INFO - Successfully cleared all experiment files
-2025-02-12 11:20:51,656 - INFO - Clearing all experiment files in experiments
-2025-02-12 11:20:51,658 - INFO - Successfully cleared all experiment files
-2025-02-12 11:42:47,105 - INFO - Clearing all experiment files in experiments
-2025-02-12 11:42:47,112 - INFO - Successfully cleared all experiment files
+2025-02-12 22:01:47,051 - WARNING - Using the latest cached version of the dataset since CLUTRR/v1 couldn't be found on the Hugging Face Hub
+2025-02-12 22:01:47,053 - WARNING - Found the latest cached dataset configuration 'gen_train234_test2to10' at /home/j/.cache/huggingface/datasets/CLUTRR___v1/gen_train234_test2to10/1.0.0/a8158d1fac10864c3424d53662fe63bf7d82dd87 (last modified on Wed Feb 12 21:39:16 2025).
